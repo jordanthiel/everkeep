@@ -1,16 +1,236 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { join } from 'path'
 import { IpcChannels } from '../../shared/types/ipc'
-import { ok } from './result'
+import {
+  BackupVaultSchema,
+  CreatePersonSchema,
+  CreateVaultSchema,
+  OpenVaultSchema,
+  PersonIdSchema,
+  PickBackupPathSchema,
+  PickSavePathSchema,
+  SaveAsVaultSchema,
+  UpdatePersonSchema
+} from '../../shared/schemas'
+import { VAULT_EXTENSION, VAULT_FILE_FILTER } from '../../shared/constants'
+import {
+  getDefaultVaultDirectory,
+  getRecentVaultsPath,
+  getRecoveryBackupDirectory
+} from '../files/paths'
+import { RecentVaultsStore } from '../repositories/RecentVaultsStore'
+import { VaultService } from '../services/VaultService'
+import { fromError, ok } from './result'
+
+let vaultService: VaultService | null = null
+
+function getVaultService(): VaultService {
+  if (!vaultService) {
+    vaultService = new VaultService({
+      recentStore: new RecentVaultsStore(getRecentVaultsPath()),
+      recoveryDirectory: getRecoveryBackupDirectory()
+    })
+  }
+  return vaultService
+}
+
+function getParentWindow(): BrowserWindow | null {
+  const focused = BrowserWindow.getFocusedWindow()
+  if (focused) return focused
+  const all = BrowserWindow.getAllWindows()
+  return all[0] ?? null
+}
 
 export function registerIpcHandlers(): void {
+  const service = getVaultService()
+
   ipcMain.handle(IpcChannels.app.ping, async () => ok({ message: 'pong' }))
 
   ipcMain.handle(IpcChannels.app.getVersion, async () => {
     const { app } = await import('electron')
     return ok({ version: app.getVersion() })
   })
+
+  ipcMain.handle(IpcChannels.vault.getDefaultVaultDir, async () => {
+    try {
+      return ok(getDefaultVaultDirectory())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.pickSavePath, async (_event, raw) => {
+    try {
+      const { suggestedName } = PickSavePathSchema.parse(raw)
+      const defaultDir = getDefaultVaultDirectory()
+      const parent = getParentWindow()
+      const options = {
+        title: 'Create Everkeep Vault',
+        defaultPath: join(defaultDir, `${suggestedName}${VAULT_EXTENSION}`),
+        filters: [VAULT_FILE_FILTER]
+      }
+      const result = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options)
+      return ok(result.canceled ? null : result.filePath ?? null)
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.pickOpenPath, async () => {
+    try {
+      const parent = getParentWindow()
+      const options = {
+        title: 'Open Everkeep Vault',
+        defaultPath: getDefaultVaultDirectory(),
+        filters: [VAULT_FILE_FILTER],
+        properties: ['openFile' as const]
+      }
+      const result = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options)
+      return ok(result.canceled ? null : (result.filePaths[0] ?? null))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.pickBackupPath, async (_event, raw) => {
+    try {
+      const { suggestedName } = PickBackupPathSchema.parse(raw)
+      const parent = getParentWindow()
+      const options = {
+        title: 'Create Everkeep Backup',
+        defaultPath: join(getRecoveryBackupDirectory(), `${suggestedName}${VAULT_EXTENSION}`),
+        filters: [VAULT_FILE_FILTER]
+      }
+      const result = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options)
+      return ok(result.canceled ? null : result.filePath ?? null)
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.create, async (_event, raw) => {
+    try {
+      const input = CreateVaultSchema.parse(raw)
+      return ok(service.createVault(input))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.open, async (_event, raw) => {
+    try {
+      const input = OpenVaultSchema.parse(raw)
+      return ok(service.openVault(input))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.close, async () => {
+    try {
+      return ok(service.closeVault())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.getStatus, async () => {
+    try {
+      return ok(service.getStatus())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.getRecent, async () => {
+    try {
+      return ok(service.getRecent())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.saveAs, async (_event, raw) => {
+    try {
+      const input = SaveAsVaultSchema.parse(raw)
+      return ok(service.saveAs(input))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.backup, async (_event, raw) => {
+    try {
+      const input = BackupVaultSchema.parse(raw)
+      return ok(service.backup(input))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.people.list, async () => {
+    try {
+      return ok(service.listPeople())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.people.get, async (_event, raw) => {
+    try {
+      const { id } = PersonIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.getPerson(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.people.create, async (_event, raw) => {
+    try {
+      const input = CreatePersonSchema.parse(raw)
+      return ok(service.createPerson(input))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.people.update, async (_event, raw) => {
+    try {
+      const input = UpdatePersonSchema.parse(raw)
+      return ok(service.updatePerson(input))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.people.archive, async (_event, raw) => {
+    try {
+      const { id } = PersonIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.archivePerson(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.people.markReviewed, async (_event, raw) => {
+    try {
+      const { id } = PersonIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.markPersonReviewed(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
 }
 
 export function shutdownVaultService(): void {
-  // Vault lifecycle is registered in the persistence milestone.
+  if (vaultService) {
+    vaultService.closeVault()
+    vaultService = null
+  }
 }
