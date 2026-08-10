@@ -1,2 +1,5 @@
 export * from './vault'
 export * from './person'
+export * from './contact'
+export * from './account'
+export * from './digital'
