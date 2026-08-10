@@ -90,10 +90,21 @@
     },
     "win": {
       "icon": "build/icon.ico",
+      "executableName": "Everkeep",
       "target": [
         "nsis",
         "zip"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Everkeep",
+      "runAfterFinish": true,
+      "artifactName": "Everkeep-win.${ext}"
     },
     "linux": {
       "icon": "build/icon.png"

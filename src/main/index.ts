@@ -5,6 +5,11 @@ import { createMainWindow } from './window'
 // Disable Chromium features that aren't needed
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
 
+// Match electron-builder NSIS AppUserModelID so Start Menu / taskbar shortcuts resolve.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.everkeep.app')
+}
+
 function bootstrap(): void {
   registerIpcHandlers()
   createMainWindow()
