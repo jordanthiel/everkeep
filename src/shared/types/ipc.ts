@@ -20,6 +20,7 @@ import type {
   VaultEntry,
   VaultSectionId
 } from './entry'
+import type { Attachment } from './attachment'
 
 export const IpcChannels = {
   vault: {
@@ -77,6 +78,13 @@ export const IpcChannels = {
   },
   review: {
     list: 'review:list'
+  },
+  attachments: {
+    list: 'attachments:list',
+    pickAndAttach: 'attachments:pickAndAttach',
+    open: 'attachments:open',
+    reveal: 'attachments:reveal',
+    remove: 'attachments:remove'
   },
   app: {
     ping: 'app:ping',
@@ -146,5 +154,12 @@ export interface EverkeepApi {
   }
   review: {
     list: () => Promise<IpcResult<ReviewItem[]>>
+  }
+  attachments: {
+    list: (entryId: string) => Promise<IpcResult<Attachment[]>>
+    pickAndAttach: (entryId: string) => Promise<IpcResult<Attachment | null>>
+    open: (id: string) => Promise<IpcResult<{ opened: boolean }>>
+    reveal: (id: string) => Promise<IpcResult<{ revealed: boolean }>>
+    remove: (id: string) => Promise<IpcResult<{ removed: boolean }>>
   }
 }

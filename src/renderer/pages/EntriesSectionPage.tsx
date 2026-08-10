@@ -5,6 +5,7 @@ import { SectionPage } from '@renderer/components/layout/SectionPage'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
 import { Label } from '@renderer/components/ui/Label'
+import { EntryAttachments } from '@renderer/components/attachments/EntryAttachments'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
 import { getSectionDefinition } from '@shared/sections/definitions'
@@ -267,6 +268,7 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
                       {entry.notes}
                     </p>
                   )}
+                  {def.showAttachments && <EntryAttachments entryId={entry.id} />}
                   <p className="mt-3 text-xs text-warm-400">
                     Last reviewed{' '}
                     {entry.lastReviewedAt

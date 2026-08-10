@@ -82,6 +82,14 @@ const api: EverkeepApi = {
   },
   review: {
     list: () => ipcRenderer.invoke(IpcChannels.review.list)
+  },
+  attachments: {
+    list: (entryId: string) => ipcRenderer.invoke(IpcChannels.attachments.list, { entryId }),
+    pickAndAttach: (entryId: string) =>
+      ipcRenderer.invoke(IpcChannels.attachments.pickAndAttach, { entryId }),
+    open: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.open, { id }),
+    reveal: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.reveal, { id }),
+    remove: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.remove, { id })
   }
 }
 

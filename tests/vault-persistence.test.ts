@@ -43,7 +43,7 @@ describe('Everkeep vault persistence', () => {
 
     expect(created.filePath).toBe(vaultPath)
     expect(created.metadata.name).toBe('Thiel Family')
-    expect(created.metadata.schemaVersion).toBe(2)
+    expect(created.metadata.schemaVersion).toBe(3)
     expect(created.metadata.isPasswordProtected).toBe(false)
 
     const person = service.createPerson({
@@ -80,14 +80,16 @@ describe('Everkeep vault persistence', () => {
     service.closeVault()
   })
 
-  it('supports backup and opening the backup as an independent vault', () => {
+  it('supports backup archive and restore into a new vault file', async () => {
     const root = tempDir('everkeep-backup-')
     const vaultPath = join(root, 'My-Family.everkeep')
-    const backupPath = join(root, 'My-Family-backup.everkeep')
+    const backupPath = join(root, 'My-Family-backup.everkeep-backup')
+    const restoredPath = join(root, 'My-Family-restored.everkeep')
 
     const service = new VaultService({
       recentStore: new RecentVaultsStore(join(root, 'recent.json')),
-      argon2Params: TEST_ARGON2_PARAMS
+      argon2Params: TEST_ARGON2_PARAMS,
+      attachmentsRootFactory: (vaultId) => join(root, 'attachments', vaultId)
     })
 
     service.createVault({
@@ -102,12 +104,15 @@ describe('Everkeep vault persistence', () => {
       relationship: 'child'
     })
 
-    const backup = service.backup({ destinationPath: backupPath })
+    const backup = await service.backup({ destinationPath: backupPath })
     expect(backup.backupPath).toBe(backupPath)
 
     service.closeVault()
 
-    const restored = service.openVault({ filePath: backupPath })
+    const restored = await service.restoreBackup({
+      backupPath,
+      destinationPath: restoredPath
+    })
     expect(restored.metadata.name).toBe('My Family')
     expect(service.listPeople().map((p) => p.fullName)).toEqual(
       expect.arrayContaining(['Sam Morgan', 'Jamie Morgan'])

@@ -27,6 +27,7 @@ export interface SectionDefinition {
   fields: SectionFieldDef[]
   showLocation?: boolean
   showNotes?: boolean
+  showAttachments?: boolean
   disclaimer?: string
 }
 
@@ -455,7 +456,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
   {
     id: 'documents',
     title: 'Documents',
-    description: 'References to important papers and where to find them.',
+    description: 'References to important papers, where to find them, and optional uploaded copies.',
     path: '/documents',
     addLabel: 'Add document',
     kindLabel: 'Category',
@@ -476,13 +477,16 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     titlePlaceholder: 'e.g. Deed — primary residence',
     showLocation: true,
     showNotes: true,
+    showAttachments: true,
     fields: [
       { key: 'description', label: 'Description', type: 'textarea' },
       { key: 'physicalLocation', label: 'Original physical location', type: 'text' },
       { key: 'electronicLocation', label: 'Electronic location', type: 'text' },
       { key: 'documentDate', label: 'Document date', type: 'date' },
       { key: 'expirationDate', label: 'Expiration date', type: 'date' }
-    ]
+    ],
+    disclaimer:
+      'Uploaded files are stored only on this computer with your vault. Include them in Everkeep backups so they travel with your vault.'
   }
 ]
 

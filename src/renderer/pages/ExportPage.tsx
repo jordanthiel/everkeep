@@ -53,8 +53,8 @@ export function ExportPage() {
         <div className="rounded-xl border border-warm-200 bg-ivory-50/80 p-5">
           <h2 className="font-medium text-charcoal-900">Everkeep Backup</h2>
           <p className="mt-2 text-sm text-warm-500">
-            Creates a portable copy of your vault file. Store backups separately from your primary
-            vault.
+            Creates a portable <code>.everkeep-backup</code> archive with your vault database and any
+            uploaded document attachments. Store backups separately from your primary vault.
           </p>
           <Button className="mt-4" onClick={() => void backup()} disabled={!session}>
             Create Everkeep Backup

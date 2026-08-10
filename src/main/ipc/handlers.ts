@@ -3,6 +3,7 @@ import { join } from 'path'
 import { IpcChannels } from '../../shared/types/ipc'
 import {
   AccountIdSchema,
+  AttachmentIdSchema,
   BackupVaultSchema,
   ContactIdSchema,
   CreateAccountSchema,
@@ -12,6 +13,7 @@ import {
   CreateVaultEntrySchema,
   CreateVaultSchema,
   DigitalAccountIdSchema,
+  EntryIdForAttachmentsSchema,
   ExportReportSchema,
   ListVaultEntriesSchema,
   OpenVaultSchema,
@@ -116,8 +118,8 @@ export function registerIpcHandlers(): void {
       const parent = getParentWindow()
       const options = {
         title: 'Create Everkeep Backup',
-        defaultPath: join(getRecoveryBackupDirectory(), `${suggestedName}${VAULT_EXTENSION}`),
-        filters: [VAULT_FILE_FILTER]
+        defaultPath: join(getRecoveryBackupDirectory(), `${suggestedName}.everkeep-backup`),
+        filters: [{ name: 'Everkeep Backup', extensions: ['everkeep-backup'] }]
       }
       const result = parent
         ? await dialog.showSaveDialog(parent, options)
@@ -199,7 +201,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.vault.backup, async (_event, raw) => {
     try {
       const input = BackupVaultSchema.parse(raw)
-      return ok(service.backup(input))
+      return ok(await service.backup(input))
     } catch (error) {
       return fromError(error)
     }
@@ -456,6 +458,84 @@ export function registerIpcHandlers(): void {
     try {
       const { password } = UnlockVaultSchema.parse(raw)
       return ok(service.enablePassword(password))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.attachments.list, async (_event, raw) => {
+    try {
+      const { entryId } = EntryIdForAttachmentsSchema.parse(raw)
+      return ok(service.listAttachments(entryId))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.attachments.pickAndAttach, async (_event, raw) => {
+    try {
+      const { entryId } = EntryIdForAttachmentsSchema.parse(raw)
+      const parent = getParentWindow()
+      const options = {
+        title: 'Attach file to Everkeep document',
+        properties: ['openFile' as const],
+        filters: [
+          {
+            name: 'Documents & images',
+            extensions: [
+              'pdf',
+              'png',
+              'jpg',
+              'jpeg',
+              'gif',
+              'webp',
+              'txt',
+              'md',
+              'doc',
+              'docx',
+              'xls',
+              'xlsx',
+              'csv',
+              'zip'
+            ]
+          },
+          { name: 'All files', extensions: ['*'] }
+        ]
+      }
+      const result = parent
+        ? await dialog.showOpenDialog(parent, options)
+        : await dialog.showOpenDialog(options)
+      if (result.canceled || !result.filePaths[0]) {
+        return ok(null)
+      }
+      return ok(service.attachFile(entryId, result.filePaths[0]))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.attachments.open, async (_event, raw) => {
+    try {
+      const { id } = AttachmentIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(await service.openAttachment(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.attachments.reveal, async (_event, raw) => {
+    try {
+      const { id } = AttachmentIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.revealAttachment(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.attachments.remove, async (_event, raw) => {
+    try {
+      const { id } = AttachmentIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.removeAttachment(id))
     } catch (error) {
       return fromError(error)
     }

@@ -21,6 +21,8 @@ import {
   EncryptionService,
   type Argon2Params
 } from '../security/EncryptionService'
+import { getAttachmentsDirectory } from '../files/paths'
+import { AttachmentService, AttachmentServiceError } from './AttachmentService'
 import { DashboardService } from './DashboardService'
 import { ExportService } from './ExportService'
 import { ReviewService } from './ReviewService'
@@ -61,6 +63,7 @@ import type {
   VaultEntry,
   VaultSectionId
 } from '../../shared/types/entry'
+import type { Attachment } from '../../shared/types/attachment'
 
 export class VaultServiceError extends Error {
   constructor(
@@ -78,6 +81,8 @@ export interface VaultServiceOptions {
   maxRecoveryCopies?: number
   encryption?: EncryptionService
   argon2Params?: Argon2Params
+  /** Override attachments root (tests). Defaults to app userData/attachments/{vaultId}. */
+  attachmentsRootFactory?: (vaultId: string) => string
 }
 
 export class VaultService {
@@ -90,6 +95,7 @@ export class VaultService {
   private readonly maxRecoveryCopies: number
   private readonly encryption: EncryptionService
   private readonly argon2Params: Argon2Params
+  private readonly attachmentsRootFactory: (vaultId: string) => string
 
   constructor(options: VaultServiceOptions = {}) {
     if (!options.recentStore) {
@@ -100,6 +106,8 @@ export class VaultService {
     this.maxRecoveryCopies = options.maxRecoveryCopies ?? 5
     this.encryption = options.encryption ?? new EncryptionService()
     this.argon2Params = options.argon2Params ?? DEFAULT_ARGON2_PARAMS
+    this.attachmentsRootFactory =
+      options.attachmentsRootFactory ?? ((vaultId) => getAttachmentsDirectory(vaultId))
   }
 
   getStatus(): VaultStatus {
@@ -479,15 +487,46 @@ export class VaultService {
     return this.openVault({ filePath: destination })
   }
 
-  backup(input: BackupVaultInput): { backupPath: string } {
+  async backup(input: BackupVaultInput): Promise<{ backupPath: string }> {
     this.requireOpenDb()
-    const destination = ensureVaultExtension(input.destinationPath)
-    ensureParentDirectory(destination)
-
+    ensureParentDirectory(input.destinationPath)
     this.db!.pragma('wal_checkpoint(TRUNCATE)')
-    copyFileSync(this.filePath!, destination)
 
-    return { backupPath: destination }
+    const destination = input.destinationPath.endsWith('.everkeep-backup')
+      ? input.destinationPath
+      : input.destinationPath.endsWith('.everkeep')
+        ? input.destinationPath.replace(/\.everkeep$/i, '.everkeep-backup')
+        : `${input.destinationPath}.everkeep-backup`
+
+    const backupPath = await this.attachmentService().writeBackupArchive(
+      this.filePath!,
+      destination
+    )
+    return { backupPath }
+  }
+
+  async restoreBackup(input: {
+    backupPath: string
+    destinationPath: string
+    password?: string
+  }): Promise<VaultSession> {
+    const destination = ensureVaultExtension(input.destinationPath)
+    if (existsSync(destination)) {
+      throw new VaultServiceError('A vault already exists at the destination.', 'VAULT_EXISTS')
+    }
+
+    try {
+      await AttachmentService.extractVaultFromBackup(input.backupPath, destination)
+    } catch (error) {
+      if (error instanceof AttachmentServiceError) {
+        throw new VaultServiceError(error.message, error.code)
+      }
+      throw error
+    }
+
+    const session = this.openVault({ filePath: destination, password: input.password })
+    await this.attachmentService().restoreAttachmentFilesFromBackup(input.backupPath)
+    return session
   }
 
   getDashboard(): DashboardSummary {
@@ -590,6 +629,47 @@ export class VaultService {
     return this.entryRepo().markReviewed(id)
   }
 
+  listAttachments(entryId: string): Attachment[] {
+    return this.attachmentService().listForEntry(entryId)
+  }
+
+  attachFile(entryId: string, sourcePath: string): Attachment {
+    try {
+      return this.attachmentService().attachFromPath(entryId, sourcePath)
+    } catch (error) {
+      if (error instanceof AttachmentServiceError) {
+        throw new VaultServiceError(error.message, error.code)
+      }
+      throw error
+    }
+  }
+
+  async openAttachment(id: string): Promise<{ opened: boolean }> {
+    try {
+      return await this.attachmentService().open(id)
+    } catch (error) {
+      if (error instanceof AttachmentServiceError) {
+        throw new VaultServiceError(error.message, error.code)
+      }
+      throw error
+    }
+  }
+
+  revealAttachment(id: string): { revealed: boolean } {
+    try {
+      return this.attachmentService().revealInFolder(id)
+    } catch (error) {
+      if (error instanceof AttachmentServiceError) {
+        throw new VaultServiceError(error.message, error.code)
+      }
+      throw error
+    }
+  }
+
+  removeAttachment(id: string): { removed: boolean } {
+    return this.attachmentService().remove(id)
+  }
+
   listReviewItems(): ReviewItem[] {
     return new ReviewService(this.requireOpenDb()).listStaleItems()
   }
@@ -637,6 +717,18 @@ export class VaultService {
   private entryRepo(): EntryRepository {
     this.requireOpenDb()
     return new EntryRepository(this.db!, this.encryption, this.encryptionKey)
+  }
+
+  private attachmentService(): AttachmentService {
+    const metadata = new VaultRepository(this.requireOpenDb()).getMetadata()
+    if (!metadata) {
+      throw new VaultServiceError('Vault metadata is missing.', 'VAULT_INVALID')
+    }
+    return new AttachmentService(
+      this.db!,
+      metadata.id,
+      this.attachmentsRootFactory(metadata.id)
+    )
   }
 
   private requireOpenDb(): VaultDatabase {
