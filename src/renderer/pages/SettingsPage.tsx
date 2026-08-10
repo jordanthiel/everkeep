@@ -28,6 +28,17 @@ export function SettingsPage() {
     }
   }
 
+  async function handleLock() {
+    setError(null)
+    try {
+      const locked = await unwrap(getEverkeepApi().vault.lock())
+      setSession(locked)
+      navigate('/unlock')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to lock vault.')
+    }
+  }
+
   async function handleClose() {
     setError(null)
     try {
@@ -70,6 +81,11 @@ export function SettingsPage() {
             <Button variant="secondary" onClick={() => void handleBackup()} disabled={!session}>
               Back Up Vault
             </Button>
+            {session?.metadata.isPasswordProtected && (
+              <Button variant="secondary" onClick={() => void handleLock()}>
+                Lock Vault
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => void handleClose()} disabled={!session}>
               Close Vault
             </Button>
@@ -83,7 +99,8 @@ export function SettingsPage() {
           <p className="mt-3 text-sm leading-relaxed text-warm-500">{LEGAL_DISCLAIMER}</p>
           <p className="mt-4 text-xs text-warm-400">
             Everkeep is local-first. Your vault stays on this computer and is never uploaded to an
-            Everkeep server.
+            Everkeep server. Sensitive fields in password-protected vaults are encrypted with
+            Argon2id + AES-256-GCM.
           </p>
         </section>
       </div>

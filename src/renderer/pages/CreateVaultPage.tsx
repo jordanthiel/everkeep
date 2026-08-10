@@ -288,8 +288,8 @@ export function CreateVaultPage() {
                   />
                 </div>
                 <p className="text-xs text-warm-400">
-                  Full encryption of sensitive fields arrives in the next milestone. Your preference
-                  is saved with the vault now.
+                  Everkeep derives an encryption key with Argon2id and encrypts sensitive fields with
+                  AES-256-GCM. The password is never stored.
                 </p>
               </div>
             )}

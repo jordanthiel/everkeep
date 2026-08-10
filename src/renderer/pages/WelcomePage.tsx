@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { FolderOpen, Plus } from 'lucide-react'
 import { EverkeepMark } from '@renderer/components/brand/EverkeepMark'
 import { Button } from '@renderer/components/ui/Button'
-import { getEverkeepApi, unwrap } from '@renderer/lib/api'
+import { Input } from '@renderer/components/ui/Input'
+import { Label } from '@renderer/components/ui/Label'
+import { ApiError, getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
 import type { RecentVault } from '@shared/types/vault'
 import { LEGAL_DISCLAIMER } from '@shared/constants'
@@ -14,6 +16,8 @@ export function WelcomePage() {
   const [recent, setRecent] = useState<RecentVault[]>([])
   const [error, setError] = useState<string | null>(null)
   const [openingPath, setOpeningPath] = useState<string | null>(null)
+  const [passwordPromptPath, setPasswordPromptPath] = useState<string | null>(null)
+  const [password, setPassword] = useState('')
 
   useEffect(() => {
     void (async () => {
@@ -26,15 +30,27 @@ export function WelcomePage() {
     })()
   }, [])
 
-  async function openPath(filePath: string, password?: string) {
+  async function openPath(filePath: string, passwordValue?: string) {
     setError(null)
     setOpeningPath(filePath)
     try {
-      const session = await unwrap(getEverkeepApi().vault.open({ filePath, password }))
+      const session = await unwrap(
+        getEverkeepApi().vault.open({ filePath, password: passwordValue })
+      )
       setSession(session)
+      setPasswordPromptPath(null)
+      setPassword('')
       navigate('/')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to open vault.')
+      if (err instanceof ApiError && err.code === 'PASSWORD_REQUIRED') {
+        setPasswordPromptPath(filePath)
+        setError(null)
+      } else if (err instanceof ApiError && err.code === 'PASSWORD_INCORRECT') {
+        setPasswordPromptPath(filePath)
+        setError('Incorrect password.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Unable to open vault.')
+      }
     } finally {
       setOpeningPath(null)
     }
@@ -81,6 +97,45 @@ export function WelcomePage() {
             Open an Existing Vault
           </Button>
         </div>
+
+        {passwordPromptPath && (
+          <div className="mt-8 rounded-xl border border-warm-200 bg-ivory-50/90 p-5">
+            <h2 className="font-medium text-charcoal-900">Password required</h2>
+            <p className="mt-1 break-all text-xs text-warm-400">{passwordPromptPath}</p>
+            <div className="mt-4">
+              <Label htmlFor="vaultPassword">Vault password</Label>
+              <Input
+                id="vaultPassword"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && password) {
+                    void openPath(passwordPromptPath, password)
+                  }
+                }}
+              />
+            </div>
+            <div className="mt-4 flex gap-3">
+              <Button
+                disabled={!password || openingPath === passwordPromptPath}
+                onClick={() => void openPath(passwordPromptPath, password)}
+              >
+                Unlock & open
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setPasswordPromptPath(null)
+                  setPassword('')
+                  setError(null)
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
 
         {error && (
           <p className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-center text-sm text-red-800">

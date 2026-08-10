@@ -33,3 +33,12 @@ export const PickSavePathSchema = z.object({
 export const PickBackupPathSchema = z.object({
   suggestedName: z.string().min(1).max(200)
 })
+
+export const UnlockVaultSchema = z.object({
+  password: z.string().min(1).max(256)
+})
+
+export const RotatePasswordSchema = z.object({
+  currentPassword: z.string().max(256).optional(),
+  newPassword: z.string().min(8).max(256)
+})

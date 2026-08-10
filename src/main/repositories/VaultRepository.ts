@@ -164,4 +164,62 @@ export class VaultRepository {
       | undefined
     return row?.password_verifier ?? null
   }
+
+  getEncryptionMaterial(): {
+    isPasswordProtected: boolean
+    passwordVerifier: string | null
+    encryptionSalt: string | null
+    encryptionParams: string | null
+  } | null {
+    const row = this.db
+      .prepare(
+        `SELECT is_password_protected, password_verifier, encryption_salt, encryption_params
+         FROM vault_metadata LIMIT 1`
+      )
+      .get() as
+      | {
+          is_password_protected: number
+          password_verifier: string | null
+          encryption_salt: string | null
+          encryption_params: string | null
+        }
+      | undefined
+
+    if (!row) return null
+    return {
+      isPasswordProtected: row.is_password_protected === 1,
+      passwordVerifier: row.password_verifier,
+      encryptionSalt: row.encryption_salt,
+      encryptionParams: row.encryption_params
+    }
+  }
+
+  setPasswordProtection(input: {
+    isPasswordProtected: boolean
+    passwordVerifier: string | null
+    encryptionSalt: string | null
+    encryptionParams: string | null
+  }): void {
+    const current = this.getMetadata()
+    if (!current) throw new Error('Vault metadata not found')
+
+    this.db
+      .prepare(
+        `UPDATE vault_metadata SET
+          is_password_protected = ?,
+          password_verifier = ?,
+          encryption_salt = ?,
+          encryption_params = ?,
+          updated_at = ?
+        WHERE id = ?`
+      )
+      .run(
+        input.isPasswordProtected ? 1 : 0,
+        input.passwordVerifier,
+        input.encryptionSalt,
+        input.encryptionParams,
+        new Date().toISOString(),
+        current.id
+      )
+  }
 }

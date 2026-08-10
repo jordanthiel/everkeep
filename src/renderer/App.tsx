@@ -6,6 +6,10 @@ import { WelcomePage } from '@renderer/pages/WelcomePage'
 import { CreateVaultPage } from '@renderer/pages/CreateVaultPage'
 import { DashboardPage } from '@renderer/pages/DashboardPage'
 import { PeoplePage } from '@renderer/pages/PeoplePage'
+import { ContactsPage } from '@renderer/pages/ContactsPage'
+import { FinancialPage } from '@renderer/pages/FinancialPage'
+import { DigitalLifePage } from '@renderer/pages/DigitalLifePage'
+import { UnlockPage } from '@renderer/pages/UnlockPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
 import { ExportPage } from '@renderer/pages/ExportPage'
 import { PlaceholderSectionPage } from '@renderer/pages/PlaceholderSectionPage'
@@ -51,6 +55,10 @@ function VaultGate({ children }: { children: React.ReactNode }) {
     return <Navigate to="/welcome" replace />
   }
 
+  if (session.isLocked) {
+    return <Navigate to="/unlock" replace />
+  }
+
   return <>{children}</>
 }
 
@@ -61,6 +69,7 @@ export default function App() {
         <Routes>
           <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/create-vault" element={<CreateVaultPage />} />
+          <Route path="/unlock" element={<UnlockPage />} />
           <Route
             element={
               <VaultGate>
@@ -70,16 +79,7 @@ export default function App() {
           >
             <Route path="/" element={<DashboardPage />} />
             <Route path="/people" element={<PeoplePage />} />
-            <Route
-              path="/contacts"
-              element={
-                <PlaceholderSectionPage
-                  title="Important Contacts"
-                  description="Attorneys, advisors, doctors, and other professionals your family may need to reach."
-                  badge="Phase 2 polish"
-                />
-              }
-            />
+            <Route path="/contacts" element={<ContactsPage />} />
             <Route
               path="/identity"
               element={
@@ -98,15 +98,7 @@ export default function App() {
                 />
               }
             />
-            <Route
-              path="/financial"
-              element={
-                <PlaceholderSectionPage
-                  title="Financial"
-                  description="Accounts, ownership, and beneficiary designations for discovery — not net-worth tracking."
-                />
-              }
-            />
+            <Route path="/financial" element={<FinancialPage />} />
             <Route
               path="/insurance"
               element={
@@ -155,15 +147,7 @@ export default function App() {
                 />
               }
             />
-            <Route
-              path="/digital"
-              element={
-                <PlaceholderSectionPage
-                  title="Digital Life"
-                  description="Password managers, email, cloud accounts, and recovery instructions — not every password."
-                />
-              }
-            />
+            <Route path="/digital" element={<DigitalLifePage />} />
             <Route
               path="/household"
               element={

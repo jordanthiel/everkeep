@@ -2,14 +2,23 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { IpcChannels } from '../../shared/types/ipc'
 import {
+  AccountIdSchema,
   BackupVaultSchema,
+  ContactIdSchema,
+  CreateAccountSchema,
+  CreateContactSchema,
+  CreateDigitalAccountSchema,
   CreatePersonSchema,
   CreateVaultSchema,
+  DigitalAccountIdSchema,
   OpenVaultSchema,
   PersonIdSchema,
   PickBackupPathSchema,
   PickSavePathSchema,
   SaveAsVaultSchema,
+  UnlockVaultSchema,
+  UpdateAccountSchema,
+  UpdateContactSchema,
   UpdatePersonSchema
 } from '../../shared/schemas'
 import { VAULT_EXTENSION, VAULT_FILE_FILTER } from '../../shared/constants'
@@ -140,6 +149,23 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IpcChannels.vault.lock, async () => {
+    try {
+      return ok(service.lockVault())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.unlock, async (_event, raw) => {
+    try {
+      const { password } = UnlockVaultSchema.parse(raw)
+      return ok(service.unlockVault(password))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
   ipcMain.handle(IpcChannels.vault.getStatus, async () => {
     try {
       return ok(service.getStatus())
@@ -169,6 +195,14 @@ export function registerIpcHandlers(): void {
     try {
       const input = BackupVaultSchema.parse(raw)
       return ok(service.backup(input))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.getDashboard, async () => {
+    try {
+      return ok(service.getDashboard())
     } catch (error) {
       return fromError(error)
     }
@@ -222,6 +256,115 @@ export function registerIpcHandlers(): void {
     try {
       const { id } = PersonIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
       return ok(service.markPersonReviewed(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.contacts.list, async () => {
+    try {
+      return ok(service.listContacts())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.contacts.create, async (_event, raw) => {
+    try {
+      return ok(service.createContact(CreateContactSchema.parse(raw)))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.contacts.update, async (_event, raw) => {
+    try {
+      return ok(service.updateContact(UpdateContactSchema.parse(raw)))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.contacts.archive, async (_event, raw) => {
+    try {
+      const { id } = ContactIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.archiveContact(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.contacts.markReviewed, async (_event, raw) => {
+    try {
+      const { id } = ContactIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.markContactReviewed(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.accounts.list, async () => {
+    try {
+      return ok(service.listAccounts())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.accounts.create, async (_event, raw) => {
+    try {
+      return ok(service.createAccount(CreateAccountSchema.parse(raw)))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.accounts.update, async (_event, raw) => {
+    try {
+      return ok(service.updateAccount(UpdateAccountSchema.parse(raw)))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.accounts.archive, async (_event, raw) => {
+    try {
+      const { id } = AccountIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.archiveAccount(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.accounts.markReviewed, async (_event, raw) => {
+    try {
+      const { id } = AccountIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.markAccountReviewed(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.digital.list, async () => {
+    try {
+      return ok(service.listDigitalAccounts())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.digital.create, async (_event, raw) => {
+    try {
+      return ok(service.createDigitalAccount(CreateDigitalAccountSchema.parse(raw)))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.digital.archive, async (_event, raw) => {
+    try {
+      const { id } = DigitalAccountIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.archiveDigitalAccount(id))
     } catch (error) {
       return fromError(error)
     }

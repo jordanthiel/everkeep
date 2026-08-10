@@ -3,6 +3,7 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { RecentVaultsStore } from '../src/main/repositories/RecentVaultsStore'
+import { TEST_ARGON2_PARAMS } from '../src/main/security/EncryptionService'
 import { VaultService } from '../src/main/services/VaultService'
 
 describe('Everkeep vault persistence', () => {
@@ -28,7 +29,8 @@ describe('Everkeep vault persistence', () => {
 
     const service = new VaultService({
       recentStore: new RecentVaultsStore(recentPath),
-      recoveryDirectory: recoveryDir
+      recoveryDirectory: recoveryDir,
+      argon2Params: TEST_ARGON2_PARAMS
     })
 
     const created = service.createVault({
@@ -57,7 +59,9 @@ describe('Everkeep vault persistence', () => {
     expect(person.roles).toContain('emergency_contact')
 
     const listedBeforeClose = service.listPeople()
-    expect(listedBeforeClose).toHaveLength(1)
+    expect(listedBeforeClose.map((p) => p.fullName)).toEqual(
+      expect.arrayContaining(['Jordan Thiel', 'Alex Morgan'])
+    )
 
     service.closeVault()
     expect(service.getStatus().isOpen).toBe(false)
@@ -66,10 +70,9 @@ describe('Everkeep vault persistence', () => {
     expect(reopened.metadata.householdName).toBe('Thiel Family')
 
     const people = service.listPeople()
-    expect(people).toHaveLength(1)
-    expect(people[0]?.fullName).toBe('Alex Morgan')
-    expect(people[0]?.relationship).toBe('spouse')
-    expect(people[0]?.roles).toEqual(['emergency_contact'])
+    const alex = people.find((p) => p.fullName === 'Alex Morgan')
+    expect(alex?.relationship).toBe('spouse')
+    expect(alex?.roles).toEqual(['emergency_contact'])
 
     const recent = service.getRecent()
     expect(recent[0]?.filePath).toBe(vaultPath)
@@ -83,7 +86,8 @@ describe('Everkeep vault persistence', () => {
     const backupPath = join(root, 'My-Family-backup.everkeep')
 
     const service = new VaultService({
-      recentStore: new RecentVaultsStore(join(root, 'recent.json'))
+      recentStore: new RecentVaultsStore(join(root, 'recent.json')),
+      argon2Params: TEST_ARGON2_PARAMS
     })
 
     service.createVault({
@@ -105,7 +109,9 @@ describe('Everkeep vault persistence', () => {
 
     const restored = service.openVault({ filePath: backupPath })
     expect(restored.metadata.name).toBe('My Family')
-    expect(service.listPeople().map((p) => p.fullName)).toEqual(['Jamie Morgan'])
+    expect(service.listPeople().map((p) => p.fullName)).toEqual(
+      expect.arrayContaining(['Sam Morgan', 'Jamie Morgan'])
+    )
 
     service.closeVault()
   })
@@ -115,7 +121,8 @@ describe('Everkeep vault persistence', () => {
     const vaultPath = join(root, 'Protected.everkeep')
 
     const service = new VaultService({
-      recentStore: new RecentVaultsStore(join(root, 'recent.json'))
+      recentStore: new RecentVaultsStore(join(root, 'recent.json')),
+      argon2Params: TEST_ARGON2_PARAMS
     })
 
     service.createVault({
@@ -142,7 +149,8 @@ describe('Everkeep vault persistence', () => {
     const vaultPath = join(root, 'Update.everkeep')
 
     const service = new VaultService({
-      recentStore: new RecentVaultsStore(join(root, 'recent.json'))
+      recentStore: new RecentVaultsStore(join(root, 'recent.json')),
+      argon2Params: TEST_ARGON2_PARAMS
     })
 
     service.createVault({ name: 'Update', filePath: vaultPath })
