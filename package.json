@@ -17,9 +17,13 @@
     "test": "npm run rebuild:node && vitest run && npm run rebuild:electron",
     "test:watch": "npm run rebuild:node && vitest",
     "postinstall": "electron-builder install-app-deps",
+    "icons": "node scripts/generate-icons.mjs",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "website:dev": "npm --prefix website run dev",
+    "website:build": "npm --prefix website run build",
+    "website:preview": "npm --prefix website run preview"
   },
   "dependencies": {
     "@noble/hashes": "^2.3.0",
@@ -39,6 +43,7 @@
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
     "@eslint/js": "^9.19.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/better-sqlite3": "^7.6.12",
     "@types/jszip": "^3.4.0",
     "@types/node": "^22.20.1",
@@ -55,6 +60,7 @@
     "eslint": "^9.19.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.18",
+    "png2icons": "^2.0.1",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
@@ -65,13 +71,17 @@
     "appId": "com.everkeep.app",
     "productName": "Everkeep",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*",
-      "package.json"
+      "package.json",
+      "build/icon.png",
+      "build/icon.ico"
     ],
     "mac": {
+      "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
       "target": [
         "dmg",
@@ -79,10 +89,14 @@
       ]
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "zip"
       ]
+    },
+    "linux": {
+      "icon": "build/icon.png"
     },
     "asarUnpack": [
       "**/*.{node,dll}"

@@ -37,6 +37,18 @@ npm run dist:mac
 npm run dist:win
 ```
 
+## Marketing site
+
+The product landing page lives in [`website/`](./website) (React + Vite).
+
+```bash
+npm run website:dev
+# or
+cd website && npm install && npm run dev
+```
+
+Configure download URLs with `website/.env` (see `website/.env.example`).
+
 ## Architecture
 
 ```text

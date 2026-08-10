@@ -1,7 +1,18 @@
-import { BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 
+export function resolveAppIcon(): string {
+  const fileName = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  return join(app.getAppPath(), 'build', fileName)
+}
+
 export function createMainWindow(): BrowserWindow {
+  const icon = resolveAppIcon()
+
+  if (process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(icon)
+  }
+
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -10,6 +21,7 @@ export function createMainWindow(): BrowserWindow {
     show: false,
     title: 'Everkeep',
     backgroundColor: '#F8F5F0',
+    icon,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: process.platform === 'darwin' ? { x: 16, y: 16 } : undefined,
     webPreferences: {
