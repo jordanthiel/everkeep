@@ -1,0 +1,17 @@
+node_modules
+dist
+out
+release
+*.log
+.DS_Store
+.env
+.env.*
+coverage
+*.local
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.everkeep
+!fixtures/**/*.everkeep
+.everkeep-temp
+*.tsbuildinfo
