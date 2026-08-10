@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Check, Eye, EyeOff, Plus } from 'lucide-react'
+import { Check, Eye, EyeOff, FileUp, Plus, X } from 'lucide-react'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
@@ -27,6 +27,7 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
   const [sensitiveFields, setSensitiveFields] = useState<Record<string, string>>({})
   const [notes, setNotes] = useState('')
   const [locationText, setLocationText] = useState('')
+  const [pendingFile, setPendingFile] = useState<{ path: string; filename: string } | null>(null)
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
 
@@ -36,15 +37,16 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
   })
 
   const createMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const resolvedTitle =
         title.trim() ||
         fields.carrier ||
         fields.provider ||
         fields.fullLegalName ||
+        pendingFile?.filename.replace(/\.[^.]+$/, '') ||
         kind ||
         'Untitled'
-      return unwrap(
+      const created = await unwrap(
         getEverkeepApi().entries.create({
           section: sectionId,
           kind: kind || null,
@@ -55,19 +57,25 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
           locationText: locationText.trim() || null
         })
       )
+      if (pendingFile) {
+        await unwrap(getEverkeepApi().attachments.attach(created.id, pendingFile.path))
+      }
+      return created
     },
     onMutate: () => {
       setError(null)
       setSaveStatus('saving')
     },
-    onSuccess: async () => {
+    onSuccess: async (created) => {
       setTitle('')
       setFields({})
       setSensitiveFields({})
       setNotes('')
       setLocationText('')
+      setPendingFile(null)
       setSaveStatus('saved')
       await queryClient.invalidateQueries({ queryKey: ['entries', sectionId] })
+      await queryClient.invalidateQueries({ queryKey: ['attachments', created.id] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       await queryClient.invalidateQueries({ queryKey: ['review'] })
       window.setTimeout(() => setSaveStatus('idle'), 1500)
@@ -77,6 +85,20 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
       setError(err instanceof Error ? err.message : 'Unable to save.')
     }
   })
+
+  async function choosePendingFile() {
+    setError(null)
+    try {
+      const picked = await unwrap(getEverkeepApi().attachments.pickFile())
+      if (!picked) return
+      setPendingFile(picked)
+      if (!title.trim()) {
+        setTitle(picked.filename.replace(/\.[^.]+$/, ''))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to choose file.')
+    }
+  }
 
   function setField(key: string, value: string, sensitive?: boolean) {
     if (sensitive) {
@@ -194,10 +216,43 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
           </div>
         )}
 
+        {def.showAttachments && (
+          <div className="md:col-span-2">
+            <Label>File to attach</Label>
+            {pendingFile ? (
+              <div className="mt-1.5 flex items-center justify-between gap-3 rounded-md border border-forest-600/20 bg-forest-700/5 px-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-charcoal-900">
+                    {pendingFile.filename}
+                  </p>
+                  <p className="text-xs text-warm-500">Will be uploaded when you save this document</p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => void choosePendingFile()}>
+                    Change
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setPendingFile(null)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                className="mt-1.5"
+                variant="secondary"
+                onClick={() => void choosePendingFile()}
+              >
+                <FileUp className="h-4 w-4" />
+                Choose file
+              </Button>
+            )}
+          </div>
+        )}
+
         <div className="md:col-span-2">
           <Button disabled={createMutation.isPending} onClick={() => createMutation.mutate()}>
             <Plus className="h-4 w-4" />
-            {def.addLabel}
+            {pendingFile ? 'Save document & upload file' : def.addLabel}
           </Button>
           {error && <p className="mt-2 text-sm text-red-800">{error}</p>}
         </div>

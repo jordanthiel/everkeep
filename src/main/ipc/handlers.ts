@@ -3,6 +3,7 @@ import { join } from 'path'
 import { IpcChannels } from '../../shared/types/ipc'
 import {
   AccountIdSchema,
+  AttachFileSchema,
   AttachmentIdSchema,
   BackupVaultSchema,
   ContactIdSchema,
@@ -55,6 +56,47 @@ function getParentWindow(): BrowserWindow | null {
   if (focused) return focused
   const all = BrowserWindow.getAllWindows()
   return all[0] ?? null
+}
+
+async function pickAttachmentFile(): Promise<{ path: string; filename: string } | null> {
+  const parent = getParentWindow()
+  const options = {
+    title: 'Choose a file to attach',
+    properties: ['openFile' as const],
+    filters: [
+      {
+        name: 'Documents & images',
+        extensions: [
+          'pdf',
+          'png',
+          'jpg',
+          'jpeg',
+          'gif',
+          'webp',
+          'txt',
+          'md',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'csv',
+          'zip'
+        ]
+      },
+      { name: 'All files', extensions: ['*'] }
+    ]
+  }
+  const result = parent
+    ? await dialog.showOpenDialog(parent, options)
+    : await dialog.showOpenDialog(options)
+  if (result.canceled || !result.filePaths[0]) {
+    return null
+  }
+  const filePath = result.filePaths[0]
+  return {
+    path: filePath,
+    filename: filePath.split(/[/\\]/).pop() ?? 'file'
+  }
 }
 
 export function registerIpcHandlers(): void {
@@ -472,43 +514,31 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle(IpcChannels.attachments.pickFile, async () => {
+    try {
+      const picked = await pickAttachmentFile()
+      if (!picked) return ok(null)
+      return ok(picked)
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.attachments.attach, async (_event, raw) => {
+    try {
+      const { entryId, sourcePath } = AttachFileSchema.parse(raw)
+      return ok(service.attachFile(entryId, sourcePath))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
   ipcMain.handle(IpcChannels.attachments.pickAndAttach, async (_event, raw) => {
     try {
       const { entryId } = EntryIdForAttachmentsSchema.parse(raw)
-      const parent = getParentWindow()
-      const options = {
-        title: 'Attach file to Everkeep document',
-        properties: ['openFile' as const],
-        filters: [
-          {
-            name: 'Documents & images',
-            extensions: [
-              'pdf',
-              'png',
-              'jpg',
-              'jpeg',
-              'gif',
-              'webp',
-              'txt',
-              'md',
-              'doc',
-              'docx',
-              'xls',
-              'xlsx',
-              'csv',
-              'zip'
-            ]
-          },
-          { name: 'All files', extensions: ['*'] }
-        ]
-      }
-      const result = parent
-        ? await dialog.showOpenDialog(parent, options)
-        : await dialog.showOpenDialog(options)
-      if (result.canceled || !result.filePaths[0]) {
-        return ok(null)
-      }
-      return ok(service.attachFile(entryId, result.filePaths[0]))
+      const picked = await pickAttachmentFile()
+      if (!picked) return ok(null)
+      return ok(service.attachFile(entryId, picked.path))
     } catch (error) {
       return fromError(error)
     }

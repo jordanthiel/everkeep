@@ -85,6 +85,9 @@ const api: EverkeepApi = {
   },
   attachments: {
     list: (entryId: string) => ipcRenderer.invoke(IpcChannels.attachments.list, { entryId }),
+    pickFile: () => ipcRenderer.invoke(IpcChannels.attachments.pickFile),
+    attach: (entryId: string, sourcePath: string) =>
+      ipcRenderer.invoke(IpcChannels.attachments.attach, { entryId, sourcePath }),
     pickAndAttach: (entryId: string) =>
       ipcRenderer.invoke(IpcChannels.attachments.pickAndAttach, { entryId }),
     open: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.open, { id }),

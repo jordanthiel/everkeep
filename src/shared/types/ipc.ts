@@ -81,6 +81,8 @@ export const IpcChannels = {
   },
   attachments: {
     list: 'attachments:list',
+    pickFile: 'attachments:pickFile',
+    attach: 'attachments:attach',
     pickAndAttach: 'attachments:pickAndAttach',
     open: 'attachments:open',
     reveal: 'attachments:reveal',
@@ -157,6 +159,8 @@ export interface EverkeepApi {
   }
   attachments: {
     list: (entryId: string) => Promise<IpcResult<Attachment[]>>
+    pickFile: () => Promise<IpcResult<{ path: string; filename: string } | null>>
+    attach: (entryId: string, sourcePath: string) => Promise<IpcResult<Attachment>>
     pickAndAttach: (entryId: string) => Promise<IpcResult<Attachment | null>>
     open: (id: string) => Promise<IpcResult<{ opened: boolean }>>
     reveal: (id: string) => Promise<IpcResult<{ revealed: boolean }>>

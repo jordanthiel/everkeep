@@ -5,6 +5,8 @@ export const AttachFileSchema = z.object({
   sourcePath: z.string().min(1)
 })
 
+export const AttachToEntrySchema = AttachFileSchema
+
 export const AttachmentIdSchema = z.object({
   id: z.string().uuid()
 })
