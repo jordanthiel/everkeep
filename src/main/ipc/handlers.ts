@@ -9,8 +9,11 @@ import {
   CreateContactSchema,
   CreateDigitalAccountSchema,
   CreatePersonSchema,
+  CreateVaultEntrySchema,
   CreateVaultSchema,
   DigitalAccountIdSchema,
+  ExportReportSchema,
+  ListVaultEntriesSchema,
   OpenVaultSchema,
   PersonIdSchema,
   PickBackupPathSchema,
@@ -19,7 +22,9 @@ import {
   UnlockVaultSchema,
   UpdateAccountSchema,
   UpdateContactSchema,
-  UpdatePersonSchema
+  UpdatePersonSchema,
+  UpdateVaultEntrySchema,
+  VaultEntryIdSchema
 } from '../../shared/schemas'
 import { VAULT_EXTENSION, VAULT_FILE_FILTER } from '../../shared/constants'
 import {
@@ -365,6 +370,92 @@ export function registerIpcHandlers(): void {
     try {
       const { id } = DigitalAccountIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
       return ok(service.archiveDigitalAccount(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.entries.list, async (_event, raw) => {
+    try {
+      const { section } = ListVaultEntriesSchema.parse(raw)
+      return ok(service.listEntries(section))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.entries.create, async (_event, raw) => {
+    try {
+      return ok(service.createEntry(CreateVaultEntrySchema.parse(raw)))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.entries.update, async (_event, raw) => {
+    try {
+      return ok(service.updateEntry(UpdateVaultEntrySchema.parse(raw)))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.entries.archive, async (_event, raw) => {
+    try {
+      const { id } = VaultEntryIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.archiveEntry(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.entries.markReviewed, async (_event, raw) => {
+    try {
+      const { id } = VaultEntryIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
+      return ok(service.markEntryReviewed(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.review.list, async () => {
+    try {
+      return ok(service.listReviewItems())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.exportReport, async (_event, raw) => {
+    try {
+      return ok(service.exportReport(ExportReportSchema.parse(raw)))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.pickExportPath, async (_event, raw) => {
+    try {
+      const { suggestedName } = PickBackupPathSchema.parse(raw)
+      const parent = getParentWindow()
+      const options = {
+        title: 'Export Everkeep Report',
+        defaultPath: join(getDefaultVaultDirectory(), `${suggestedName}.html`),
+        filters: [{ name: 'HTML Report', extensions: ['html'] }]
+      }
+      const result = parent
+        ? await dialog.showSaveDialog(parent, options)
+        : await dialog.showSaveDialog(options)
+      return ok(result.canceled ? null : result.filePath ?? null)
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.vault.enablePassword, async (_event, raw) => {
+    try {
+      const { password } = UnlockVaultSchema.parse(raw)
+      return ok(service.enablePassword(password))
     } catch (error) {
       return fromError(error)
     }

@@ -11,6 +11,12 @@ import type { CreatePersonInput, UpdatePersonInput } from '../shared/types/perso
 import type { CreateContactInput, UpdateContactInput } from '../shared/types/contact'
 import type { CreateAccountInput, UpdateAccountInput } from '../shared/types/account'
 import type { CreateDigitalAccountInput } from '../shared/types/digital'
+import type {
+  CreateVaultEntryInput,
+  ExportReportInput,
+  UpdateVaultEntryInput,
+  VaultSectionId
+} from '../shared/types/entry'
 
 const api: EverkeepApi = {
   ping: () => ipcRenderer.invoke(IpcChannels.app.ping),
@@ -30,8 +36,14 @@ const api: EverkeepApi = {
     pickOpenPath: () => ipcRenderer.invoke(IpcChannels.vault.pickOpenPath),
     pickBackupPath: (suggestedName: string) =>
       ipcRenderer.invoke(IpcChannels.vault.pickBackupPath, { suggestedName }),
+    pickExportPath: (suggestedName: string) =>
+      ipcRenderer.invoke(IpcChannels.vault.pickExportPath, { suggestedName }),
     getDefaultVaultDir: () => ipcRenderer.invoke(IpcChannels.vault.getDefaultVaultDir),
-    getDashboard: () => ipcRenderer.invoke(IpcChannels.vault.getDashboard)
+    getDashboard: () => ipcRenderer.invoke(IpcChannels.vault.getDashboard),
+    exportReport: (input: ExportReportInput) =>
+      ipcRenderer.invoke(IpcChannels.vault.exportReport, input),
+    enablePassword: (password: string) =>
+      ipcRenderer.invoke(IpcChannels.vault.enablePassword, { password })
   },
   people: {
     list: () => ipcRenderer.invoke(IpcChannels.people.list),
@@ -60,6 +72,16 @@ const api: EverkeepApi = {
     create: (input: CreateDigitalAccountInput) =>
       ipcRenderer.invoke(IpcChannels.digital.create, input),
     archive: (id: string) => ipcRenderer.invoke(IpcChannels.digital.archive, { id })
+  },
+  entries: {
+    list: (section: VaultSectionId) => ipcRenderer.invoke(IpcChannels.entries.list, { section }),
+    create: (input: CreateVaultEntryInput) => ipcRenderer.invoke(IpcChannels.entries.create, input),
+    update: (input: UpdateVaultEntryInput) => ipcRenderer.invoke(IpcChannels.entries.update, input),
+    archive: (id: string) => ipcRenderer.invoke(IpcChannels.entries.archive, { id }),
+    markReviewed: (id: string) => ipcRenderer.invoke(IpcChannels.entries.markReviewed, { id })
+  },
+  review: {
+    list: () => ipcRenderer.invoke(IpcChannels.review.list)
   }
 }
 

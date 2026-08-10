@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
 import { Button } from '@renderer/components/ui/Button'
+import { Input } from '@renderer/components/ui/Input'
+import { Label } from '@renderer/components/ui/Label'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
 import { LEGAL_DISCLAIMER } from '@shared/constants'
@@ -12,6 +14,8 @@ export function SettingsPage() {
   const setSession = useVaultStore((s) => s.setSession)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
 
   async function handleBackup() {
     if (!session) return
@@ -36,6 +40,28 @@ export function SettingsPage() {
       navigate('/unlock')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to lock vault.')
+    }
+  }
+
+  async function handleEnablePassword() {
+    setError(null)
+    setMessage(null)
+    if (newPassword.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+    try {
+      const updated = await unwrap(getEverkeepApi().vault.enablePassword(newPassword))
+      setSession(updated)
+      setNewPassword('')
+      setConfirmPassword('')
+      setMessage('Password protection enabled. Sensitive fields will now be encrypted.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to enable password.')
     }
   }
 
@@ -93,6 +119,39 @@ export function SettingsPage() {
           {message && <p className="mt-3 text-sm text-forest-700">{message}</p>}
           {error && <p className="mt-3 text-sm text-red-800">{error}</p>}
         </section>
+
+        {session && !session.metadata.isPasswordProtected && (
+          <section className="rounded-xl border border-warm-200 bg-ivory-50/80 p-5">
+            <h2 className="font-medium text-charcoal-900">Add password protection</h2>
+            <p className="mt-2 text-sm text-warm-500">
+              If you chose a password before encryption existed, open the vault once and set a real
+              password here. The password is never sent anywhere and cannot be recovered if forgotten.
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="newPassword">New password</Label>
+                <Input
+                  id="newPassword"
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="confirmPassword">Confirm</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
+            </div>
+            <Button className="mt-4" onClick={() => void handleEnablePassword()}>
+              Protect vault
+            </Button>
+          </section>
+        )}
 
         <section className="rounded-xl border border-warm-200 bg-ivory-50/80 p-5">
           <h2 className="font-medium text-charcoal-900">About Everkeep</h2>

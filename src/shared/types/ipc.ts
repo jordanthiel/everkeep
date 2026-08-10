@@ -12,6 +12,14 @@ import type { Contact, CreateContactInput, UpdateContactInput } from './contact'
 import type { Account, CreateAccountInput, UpdateAccountInput } from './account'
 import type { DashboardSummary } from './dashboard'
 import type { CreateDigitalAccountInput, DigitalAccount } from './digital'
+import type {
+  CreateVaultEntryInput,
+  ExportReportInput,
+  ReviewItem,
+  UpdateVaultEntryInput,
+  VaultEntry,
+  VaultSectionId
+} from './entry'
 
 export const IpcChannels = {
   vault: {
@@ -28,7 +36,10 @@ export const IpcChannels = {
     pickOpenPath: 'vault:pickOpenPath',
     pickBackupPath: 'vault:pickBackupPath',
     getDefaultVaultDir: 'vault:getDefaultVaultDir',
-    getDashboard: 'vault:getDashboard'
+    getDashboard: 'vault:getDashboard',
+    exportReport: 'vault:exportReport',
+    pickExportPath: 'vault:pickExportPath',
+    enablePassword: 'vault:enablePassword'
   },
   people: {
     list: 'people:list',
@@ -57,6 +68,16 @@ export const IpcChannels = {
     create: 'digital:create',
     archive: 'digital:archive'
   },
+  entries: {
+    list: 'entries:list',
+    create: 'entries:create',
+    update: 'entries:update',
+    archive: 'entries:archive',
+    markReviewed: 'entries:markReviewed'
+  },
+  review: {
+    list: 'review:list'
+  },
   app: {
     ping: 'app:ping',
     getVersion: 'app:getVersion'
@@ -83,8 +104,11 @@ export interface EverkeepApi {
     pickSavePath: (suggestedName: string) => Promise<IpcResult<string | null>>
     pickOpenPath: () => Promise<IpcResult<string | null>>
     pickBackupPath: (suggestedName: string) => Promise<IpcResult<string | null>>
+    pickExportPath: (suggestedName: string) => Promise<IpcResult<string | null>>
     getDefaultVaultDir: () => Promise<IpcResult<string>>
     getDashboard: () => Promise<IpcResult<DashboardSummary>>
+    exportReport: (input: ExportReportInput) => Promise<IpcResult<{ path: string }>>
+    enablePassword: (password: string) => Promise<IpcResult<VaultSession>>
   }
   people: {
     list: () => Promise<IpcResult<Person[]>>
@@ -112,5 +136,15 @@ export interface EverkeepApi {
     list: () => Promise<IpcResult<DigitalAccount[]>>
     create: (input: CreateDigitalAccountInput) => Promise<IpcResult<DigitalAccount>>
     archive: (id: string) => Promise<IpcResult<{ archived: boolean }>>
+  }
+  entries: {
+    list: (section: VaultSectionId) => Promise<IpcResult<VaultEntry[]>>
+    create: (input: CreateVaultEntryInput) => Promise<IpcResult<VaultEntry>>
+    update: (input: UpdateVaultEntryInput) => Promise<IpcResult<VaultEntry>>
+    archive: (id: string) => Promise<IpcResult<{ archived: boolean }>>
+    markReviewed: (id: string) => Promise<IpcResult<VaultEntry>>
+  }
+  review: {
+    list: () => Promise<IpcResult<ReviewItem[]>>
   }
 }

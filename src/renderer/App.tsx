@@ -8,13 +8,14 @@ import { DashboardPage } from '@renderer/pages/DashboardPage'
 import { PeoplePage } from '@renderer/pages/PeoplePage'
 import { ContactsPage } from '@renderer/pages/ContactsPage'
 import { FinancialPage } from '@renderer/pages/FinancialPage'
-import { DigitalLifePage } from '@renderer/pages/DigitalLifePage'
+import { EntriesSectionPage } from '@renderer/pages/EntriesSectionPage'
 import { UnlockPage } from '@renderer/pages/UnlockPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
 import { ExportPage } from '@renderer/pages/ExportPage'
-import { PlaceholderSectionPage } from '@renderer/pages/PlaceholderSectionPage'
+import { ReviewPage } from '@renderer/pages/ReviewPage'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
+import type { VaultSectionId } from '@shared/types/entry'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +25,10 @@ const queryClient = new QueryClient({
     }
   }
 })
+
+function SectionRoute({ id }: { id: VaultSectionId }) {
+  return <EntriesSectionPage sectionId={id} />
+}
 
 function VaultGate({ children }: { children: React.ReactNode }) {
   const session = useVaultStore((s) => s.session)
@@ -80,131 +85,21 @@ export default function App() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/people" element={<PeoplePage />} />
             <Route path="/contacts" element={<ContactsPage />} />
-            <Route
-              path="/identity"
-              element={
-                <PlaceholderSectionPage
-                  title="Identity"
-                  description="Legal name, identifiers, and vital records — with careful reveal for sensitive fields."
-                />
-              }
-            />
-            <Route
-              path="/legal"
-              element={
-                <PlaceholderSectionPage
-                  title="Legal & Estate"
-                  description="Wills, trusts, powers of attorney, and where the originals live."
-                />
-              }
-            />
+            <Route path="/identity" element={<SectionRoute id="identity" />} />
+            <Route path="/legal" element={<SectionRoute id="legal" />} />
             <Route path="/financial" element={<FinancialPage />} />
-            <Route
-              path="/insurance"
-              element={
-                <PlaceholderSectionPage
-                  title="Insurance"
-                  description="Life, property, and other policies your family would need to find quickly."
-                />
-              }
-            />
-            <Route
-              path="/property"
-              element={
-                <PlaceholderSectionPage
-                  title="Property"
-                  description="Homes, vehicles, and access details that rarely live in one place."
-                />
-              }
-            />
-            <Route
-              path="/income"
-              element={
-                <PlaceholderSectionPage
-                  title="Income & Employment"
-                  description="Employers, benefits, and recurring income sources."
-                  badge="Phase 2"
-                />
-              }
-            />
-            <Route
-              path="/taxes"
-              element={
-                <PlaceholderSectionPage
-                  title="Taxes"
-                  description="Where returns live and who prepares them — not tax calculation."
-                  badge="Phase 2"
-                />
-              }
-            />
-            <Route
-              path="/healthcare"
-              element={
-                <PlaceholderSectionPage
-                  title="Healthcare"
-                  description="Optional medical context, proxies, and care preferences."
-                  badge="Phase 2"
-                />
-              }
-            />
-            <Route path="/digital" element={<DigitalLifePage />} />
-            <Route
-              path="/household"
-              element={
-                <PlaceholderSectionPage
-                  title="Household"
-                  description="Utilities, autopay, memberships, and the practical knowledge that lives in someone’s head."
-                  badge="Phase 2"
-                />
-              }
-            />
-            <Route
-              path="/personal-property"
-              element={
-                <PlaceholderSectionPage
-                  title="Personal Property"
-                  description="Meaningful assets and intended recipients, clearly labeled as informational."
-                  badge="Phase 2"
-                />
-              }
-            />
-            <Route
-              path="/final-wishes"
-              element={
-                <PlaceholderSectionPage
-                  title="Final Wishes"
-                  description="Funeral preferences and related instructions, handled with care."
-                />
-              }
-            />
-            <Route
-              path="/letters"
-              element={
-                <PlaceholderSectionPage
-                  title="Letters & Instructions"
-                  description="Private notes for family, executors, and trustees."
-                  badge="Phase 2"
-                />
-              }
-            />
-            <Route
-              path="/documents"
-              element={
-                <PlaceholderSectionPage
-                  title="Documents"
-                  description="References and attachments for the papers that matter most."
-                />
-              }
-            />
-            <Route
-              path="/review"
-              element={
-                <PlaceholderSectionPage
-                  title="Review"
-                  description="Surface information that hasn’t been confirmed in a while."
-                />
-              }
-            />
+            <Route path="/insurance" element={<SectionRoute id="insurance" />} />
+            <Route path="/property" element={<SectionRoute id="property" />} />
+            <Route path="/income" element={<SectionRoute id="income" />} />
+            <Route path="/taxes" element={<SectionRoute id="taxes" />} />
+            <Route path="/healthcare" element={<SectionRoute id="healthcare" />} />
+            <Route path="/digital" element={<SectionRoute id="digital" />} />
+            <Route path="/household" element={<SectionRoute id="household" />} />
+            <Route path="/personal-property" element={<SectionRoute id="personal-property" />} />
+            <Route path="/final-wishes" element={<SectionRoute id="final-wishes" />} />
+            <Route path="/letters" element={<SectionRoute id="letters" />} />
+            <Route path="/documents" element={<SectionRoute id="documents" />} />
+            <Route path="/review" element={<ReviewPage />} />
             <Route path="/export" element={<ExportPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

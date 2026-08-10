@@ -31,14 +31,14 @@ describe('schema migrations', () => {
       name: 'Migration Test',
       isPasswordProtected: false
     })
-    expect(meta.schemaVersion).toBe(1)
+    expect(meta.schemaVersion).toBe(getLatestSchemaVersion())
 
     closeDatabase(db)
 
     const reopened = openDatabase(path)
     const second = runMigrations(reopened, path)
     expect(second.applied).toEqual([])
-    expect(getSchemaVersion(reopened)).toBe(1)
+    expect(getSchemaVersion(reopened)).toBe(getLatestSchemaVersion())
     closeDatabase(reopened)
   })
 })

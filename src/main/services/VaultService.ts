@@ -12,6 +12,7 @@ import { ensureParentDirectory, ensureVaultExtension } from '../files/paths'
 import { AccountRepository } from '../repositories/AccountRepository'
 import { ContactRepository } from '../repositories/ContactRepository'
 import { DigitalAccountRepository } from '../repositories/DigitalAccountRepository'
+import { EntryRepository } from '../repositories/EntryRepository'
 import { PersonRepository } from '../repositories/PersonRepository'
 import { RecentVaultsStore } from '../repositories/RecentVaultsStore'
 import { VaultRepository } from '../repositories/VaultRepository'
@@ -21,6 +22,8 @@ import {
   type Argon2Params
 } from '../security/EncryptionService'
 import { DashboardService } from './DashboardService'
+import { ExportService } from './ExportService'
+import { ReviewService } from './ReviewService'
 import type {
   BackupVaultInput,
   CreateVaultInput,
@@ -50,6 +53,14 @@ import type {
   CreateDigitalAccountInput,
   DigitalAccount
 } from '../../shared/types/digital'
+import type {
+  CreateVaultEntryInput,
+  ExportReportInput,
+  ReviewItem,
+  UpdateVaultEntryInput,
+  VaultEntry,
+  VaultSectionId
+} from '../../shared/types/entry'
 
 export class VaultServiceError extends Error {
   constructor(
@@ -252,30 +263,38 @@ export class VaultService {
 
     let key: Buffer | null = null
     if (metadata.isPasswordProtected) {
-      if (!input.password) {
-        closeDatabase(db)
-        throw new VaultServiceError('This vault is password protected.', 'PASSWORD_REQUIRED')
-      }
-
       const material = repo.getEncryptionMaterial()
-      if (!material?.passwordVerifier || !material.encryptionSalt || !material.encryptionParams) {
-        closeDatabase(db)
-        throw new VaultServiceError(
-          'This vault is missing encryption metadata and cannot be unlocked.',
-          'VAULT_INVALID'
+      const hasCrypto =
+        Boolean(material?.passwordVerifier) &&
+        Boolean(material?.encryptionSalt) &&
+        Boolean(material?.encryptionParams)
+
+      if (!hasCrypto) {
+        // Pre-encryption vaults only set the protected flag; allow open and clear the false flag.
+        // Caller may then set a real password from Settings.
+        repo.setPasswordProtection({
+          isPasswordProtected: false,
+          passwordVerifier: null,
+          encryptionSalt: null,
+          encryptionParams: null
+        })
+      } else {
+        if (!input.password) {
+          closeDatabase(db)
+          throw new VaultServiceError('This vault is password protected.', 'PASSWORD_REQUIRED')
+        }
+
+        key = this.encryption.verifyPassword(
+          input.password,
+          material!.encryptionSalt!,
+          material!.encryptionParams!,
+          material!.passwordVerifier!
         )
-      }
 
-      key = this.encryption.verifyPassword(
-        input.password,
-        material.encryptionSalt,
-        material.encryptionParams,
-        material.passwordVerifier
-      )
-
-      if (!key) {
-        closeDatabase(db)
-        throw new VaultServiceError('Incorrect password.', 'PASSWORD_INCORRECT')
+        if (!key) {
+          closeDatabase(db)
+          throw new VaultServiceError('Incorrect password.', 'PASSWORD_INCORRECT')
+        }
       }
     }
 
@@ -284,15 +303,17 @@ export class VaultService {
     this.isLocked = false
     this.encryptionKey = key
 
+    const openedMetadata = repo.getMetadata() ?? metadata
+
     this.recentStore.touch({
       filePath,
-      name: metadata.name,
-      householdName: metadata.householdName
+      name: openedMetadata.name,
+      householdName: openedMetadata.householdName
     })
 
     return {
       filePath,
-      metadata,
+      metadata: openedMetadata,
       isLocked: false
     }
   }
@@ -369,18 +390,19 @@ export class VaultService {
 
     if (metadata.isPasswordProtected) {
       if (!material?.passwordVerifier || !material.encryptionSalt || !material.encryptionParams) {
-        throw new VaultServiceError('Vault encryption metadata is incomplete.', 'VAULT_INVALID')
+        // Legacy unprotected-but-flagged vault: allow setting a real password.
+      } else {
+        const currentKey = this.encryption.verifyPassword(
+          currentPassword,
+          material.encryptionSalt,
+          material.encryptionParams,
+          material.passwordVerifier
+        )
+        if (!currentKey) {
+          throw new VaultServiceError('Incorrect password.', 'PASSWORD_INCORRECT')
+        }
+        this.encryption.clearKey(currentKey)
       }
-      const currentKey = this.encryption.verifyPassword(
-        currentPassword,
-        material.encryptionSalt,
-        material.encryptionParams,
-        material.passwordVerifier
-      )
-      if (!currentKey) {
-        throw new VaultServiceError('Incorrect password.', 'PASSWORD_INCORRECT')
-      }
-      this.encryption.clearKey(currentKey)
     }
 
     // Re-encrypt sensitive account numbers when enabling/changing protection.
@@ -548,6 +570,45 @@ export class VaultService {
     return { archived: this.digitalRepo().archive(id) }
   }
 
+  listEntries(section: VaultSectionId): VaultEntry[] {
+    return this.entryRepo().list(section)
+  }
+
+  createEntry(input: CreateVaultEntryInput): VaultEntry {
+    return this.entryRepo().create(input)
+  }
+
+  updateEntry(input: UpdateVaultEntryInput): VaultEntry {
+    return this.entryRepo().update(input)
+  }
+
+  archiveEntry(id: string): { archived: boolean } {
+    return { archived: this.entryRepo().archive(id) }
+  }
+
+  markEntryReviewed(id: string): VaultEntry {
+    return this.entryRepo().markReviewed(id)
+  }
+
+  listReviewItems(): ReviewItem[] {
+    return new ReviewService(this.requireOpenDb()).listStaleItems()
+  }
+
+  exportReport(input: ExportReportInput): { path: string } {
+    const status = this.getStatus()
+    if (!status.session) {
+      throw new VaultServiceError('No vault is currently open.', 'VAULT_NOT_OPEN')
+    }
+    return new ExportService(this.requireOpenDb(), this.encryption, this.encryptionKey).writeReport(
+      status.session.metadata,
+      input
+    )
+  }
+
+  enablePassword(password: string): VaultSession {
+    return this.rotatePassword('', password)
+  }
+
   getDatabaseForTests(): VaultDatabase | null {
     return this.db
   }
@@ -571,6 +632,11 @@ export class VaultService {
 
   private digitalRepo(): DigitalAccountRepository {
     return new DigitalAccountRepository(this.requireOpenDb())
+  }
+
+  private entryRepo(): EntryRepository {
+    this.requireOpenDb()
+    return new EntryRepository(this.db!, this.encryption, this.encryptionKey)
   }
 
   private requireOpenDb(): VaultDatabase {

@@ -10,7 +10,11 @@ export class DashboardService {
     const accountsCount = this.count('accounts')
     const hasExecutor = this.hasRole('executor')
     const hasAttorney = this.hasContactRole('estate_attorney')
-    const hasPasswordManagerHint = this.hasDigitalCategory('password_manager')
+    const hasPasswordManagerHint =
+      this.hasDigitalCategory('password_manager') || this.hasEntryKind('digital', 'password_manager')
+    const hasWill = this.hasEntryKind('legal', 'will')
+    const hasInsurance = this.hasEntrySection('insurance')
+    const hasProperty = this.hasEntrySection('property')
 
     const checklist: Array<Omit<DashboardAction, 'done'>> = [
       {
@@ -38,12 +42,20 @@ export class DashboardService {
         priority: 3
       },
       {
+        id: 'add-will',
+        title: 'Record where your will is kept',
+        description: 'Note whether a will exists and the location of the original.',
+        path: '/legal',
+        cta: 'Add legal record',
+        priority: 4
+      },
+      {
         id: 'add-accounts',
         title: 'List key financial accounts',
         description: 'Checking, retirement, and brokerage accounts — discovery first, not net worth.',
         path: '/financial',
         cta: 'Add account',
-        priority: 4
+        priority: 5
       },
       {
         id: 'password-manager',
@@ -51,7 +63,23 @@ export class DashboardService {
         description: 'Record how an authorized person can reach your password manager — not every password.',
         path: '/digital',
         cta: 'Open Digital Life',
-        priority: 5
+        priority: 6
+      },
+      {
+        id: 'add-insurance',
+        title: 'Add insurance policies',
+        description: 'Life and property coverage your family would need to find quickly.',
+        path: '/insurance',
+        cta: 'Add policy',
+        priority: 7
+      },
+      {
+        id: 'add-property',
+        title: 'List homes and vehicles',
+        description: 'Addresses, titles, keys, and access instructions.',
+        path: '/property',
+        cta: 'Add property',
+        priority: 8
       }
     ]
 
@@ -60,8 +88,11 @@ export class DashboardService {
       if (item.id === 'add-people') done = peopleCount > 0
       if (item.id === 'name-executor') done = hasExecutor
       if (item.id === 'add-attorney') done = hasAttorney
+      if (item.id === 'add-will') done = hasWill
       if (item.id === 'add-accounts') done = accountsCount > 0
       if (item.id === 'password-manager') done = hasPasswordManagerHint
+      if (item.id === 'add-insurance') done = hasInsurance
+      if (item.id === 'add-property') done = hasProperty
       return { ...item, done }
     })
 
@@ -134,6 +165,34 @@ export class DashboardService {
     }
   }
 
+  private hasEntryKind(section: string, kind: string): boolean {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM vault_entries
+           WHERE section = ? AND kind = ? AND archived_at IS NULL`
+        )
+        .get(section, kind) as { count: number }
+      return row.count > 0
+    } catch {
+      return false
+    }
+  }
+
+  private hasEntrySection(section: string): boolean {
+    try {
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM vault_entries
+           WHERE section = ? AND archived_at IS NULL`
+        )
+        .get(section) as { count: number }
+      return row.count > 0
+    } catch {
+      return false
+    }
+  }
+
   private personNameByRelationship(relationship: string): string | null {
     const row = this.db
       .prepare(
@@ -194,6 +253,19 @@ export class DashboardService {
       )
       .all() as Array<{ title: string; updatedAt: string }>
 
+    let entries: Array<{ title: string; updatedAt: string; section: string }> = []
+    try {
+      entries = this.db
+        .prepare(
+          `SELECT title, updated_at AS updatedAt, section
+           FROM vault_entries WHERE archived_at IS NULL
+           ORDER BY updated_at DESC LIMIT 5`
+        )
+        .all() as Array<{ title: string; updatedAt: string; section: string }>
+    } catch {
+      entries = []
+    }
+
     return [
       ...people.map((p) => ({ entity: 'People', title: p.title, updatedAt: p.updatedAt, path: '/people' })),
       ...accounts.map((a) => ({
@@ -207,9 +279,15 @@ export class DashboardService {
         title: c.title,
         updatedAt: c.updatedAt,
         path: '/contacts'
+      })),
+      ...entries.map((e) => ({
+        entity: e.section,
+        title: e.title,
+        updatedAt: e.updatedAt,
+        path: `/${e.section}`
       }))
     ]
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 6)
+      .slice(0, 8)
   }
 }
