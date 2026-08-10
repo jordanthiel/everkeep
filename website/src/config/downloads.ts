@@ -11,7 +11,7 @@ export const downloads = {
     'https://github.com/everkeep/everkeep/releases/latest/download/Everkeep-mac.dmg',
   win:
     import.meta.env.VITE_DOWNLOAD_WIN?.trim() ||
-    'https://github.com/everkeep/everkeep/releases/latest/download/Everkeep-win.exe',
+    'https://github.com/everkeep/everkeep/releases/latest/download/Everkeep-win-x64.exe',
   releases:
     import.meta.env.VITE_RELEASES_URL?.trim() ||
     'https://github.com/everkeep/everkeep/releases/latest',

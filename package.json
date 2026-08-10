@@ -20,7 +20,7 @@
     "icons": "node scripts/generate-icons.mjs",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win",
+    "dist:win": "npm run build && electron-builder --win --x64",
     "website:dev": "npm --prefix website run dev",
     "website:build": "npm --prefix website run build",
     "website:preview": "npm --prefix website run preview"
@@ -92,19 +92,31 @@
       "icon": "build/icon.ico",
       "executableName": "Everkeep",
       "target": [
-        "nsis",
-        "zip"
-      ]
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Everkeep-win-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": "always",
+      "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Everkeep",
+      "uninstallDisplayName": "Everkeep",
       "runAfterFinish": true,
-      "artifactName": "Everkeep-win.${ext}"
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "icon": "build/icon.png"

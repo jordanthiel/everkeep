@@ -33,9 +33,14 @@ npm run build
 
 ```bash
 npm run dist:mac
-# or
+# Prefer building the Windows installer on Windows (or GitHub Actions):
 npm run dist:win
 ```
+
+Windows installers built on Apple Silicon can look fine but fail after install with
+“can’t find Everkeep.exe” because only the uninstaller was packaged. Use a
+Windows machine or the `Release Windows` GitHub Action, then confirm
+`release/win-unpacked/Everkeep.exe` exists before uploading the `.exe`.
 
 ## Marketing site
 
