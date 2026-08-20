@@ -1,6 +1,13 @@
 import type { VaultSectionId } from '../types/entry'
 
-export type SectionFieldType = 'text' | 'textarea' | 'date' | 'number' | 'select' | 'sensitive'
+export type SectionFieldType =
+  | 'text'
+  | 'textarea'
+  | 'date'
+  | 'number'
+  | 'select'
+  | 'sensitive'
+  | 'person'
 
 export interface SectionFieldDef {
   key: string
@@ -11,6 +18,8 @@ export interface SectionFieldDef {
   required?: boolean
   /** Stored encrypted when the vault is password-protected. */
   sensitive?: boolean
+  /** When set, the field is shown only for these record kinds. */
+  forKinds?: string[]
 }
 
 export interface SectionDefinition {
@@ -24,6 +33,8 @@ export interface SectionDefinition {
   kinds?: Array<{ value: string; label: string }>
   titleLabel?: string
   titlePlaceholder?: string
+  /** When true, title is generated from the record type and key fields. */
+  hideTitle?: boolean
   fields: SectionFieldDef[]
   showLocation?: boolean
   showNotes?: boolean
@@ -35,10 +46,12 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
   {
     id: 'identity',
     title: 'Identity',
-    description: 'Legal identity details and documents your family may need to locate.',
+    description:
+      'Legal names and IDs. Add people first, then attach each document to someone so you never retype a name.',
     path: '/identity',
-    addLabel: 'Add identity record',
+    addLabel: 'Save',
     kindLabel: 'Record type',
+    hideTitle: true,
     kinds: [
       { value: 'legal_name', label: 'Legal name' },
       { value: 'ssn', label: 'Social Security / national ID' },
@@ -50,18 +63,52 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
       { value: 'citizenship', label: 'Citizenship' },
       { value: 'other', label: 'Other' }
     ],
-    titlePlaceholder: 'e.g. U.S. Passport',
     showLocation: true,
     showNotes: true,
     fields: [
-      { key: 'fullLegalName', label: 'Full legal name', type: 'text' },
-      { key: 'previousNames', label: 'Previous names', type: 'text' },
-      { key: 'dateOfBirth', label: 'Date of birth', type: 'date' },
-      { key: 'placeOfBirth', label: 'Place of birth', type: 'text' },
-      { key: 'number', label: 'ID / document number', type: 'sensitive', sensitive: true },
-      { key: 'issued', label: 'Issued', type: 'date' },
-      { key: 'expires', label: 'Expires', type: 'date' },
-      { key: 'issuingAuthority', label: 'Issuing authority', type: 'text' }
+      { key: 'personId', label: 'Belongs to', type: 'person' },
+      {
+        key: 'fullLegalName',
+        label: 'Full legal name',
+        type: 'text',
+        placeholder: 'As it appears on government documents',
+        forKinds: ['legal_name']
+      },
+      { key: 'previousNames', label: 'Previous names', type: 'text', forKinds: ['legal_name'] },
+      { key: 'dateOfBirth', label: 'Date of birth', type: 'date', forKinds: ['legal_name'] },
+      { key: 'placeOfBirth', label: 'Place of birth', type: 'text', forKinds: ['legal_name'] },
+      {
+        key: 'spouseName',
+        label: 'Spouse / other party',
+        type: 'text',
+        forKinds: ['marriage', 'divorce']
+      },
+      {
+        key: 'number',
+        label: 'ID / document number',
+        type: 'sensitive',
+        sensitive: true,
+        forKinds: ['ssn', 'drivers_license', 'passport', 'military', 'citizenship', 'other']
+      },
+      {
+        key: 'issued',
+        label: 'Issued',
+        type: 'date',
+        forKinds: ['drivers_license', 'passport', 'marriage', 'divorce', 'military', 'citizenship', 'other']
+      },
+      {
+        key: 'expires',
+        label: 'Expires',
+        type: 'date',
+        forKinds: ['drivers_license', 'passport', 'other']
+      },
+      {
+        key: 'issuingAuthority',
+        label: 'Issuing authority',
+        type: 'text',
+        placeholder: 'U.S. Department of State…',
+        forKinds: ['ssn', 'drivers_license', 'passport', 'marriage', 'divorce', 'military', 'citizenship', 'other']
+      }
     ],
     disclaimer: 'Sensitive identifiers are masked in lists and encrypted in password-protected vaults.'
   },
@@ -494,4 +541,42 @@ export function getSectionDefinition(id: VaultSectionId): SectionDefinition {
   const found = SECTION_DEFINITIONS.find((section) => section.id === id)
   if (!found) throw new Error(`Unknown section: ${id}`)
   return found
+}
+
+export function getVisibleFields(def: SectionDefinition, kind: string): SectionFieldDef[] {
+  return def.fields.filter((field) => !field.forKinds || field.forKinds.includes(kind))
+}
+
+export function kindLabelFor(def: SectionDefinition, kind: string | null | undefined): string {
+  if (!kind) return ''
+  return def.kinds?.find((item) => item.value === kind)?.label ?? kind
+}
+
+export function buildEntryTitle(options: {
+  def: SectionDefinition
+  kind: string
+  title: string
+  fields: Record<string, string>
+  personName?: string | null
+  fallbackFilename?: string | null
+}): string {
+  const trimmed = options.title.trim()
+  if (trimmed) return trimmed
+
+  const kindLabel = kindLabelFor(options.def, options.kind)
+  const personName = options.personName?.trim()
+  const distinguishing =
+    options.fields.fullLegalName ||
+    options.fields.carrier ||
+    options.fields.provider ||
+    options.fields.employerOrSource ||
+    options.fields.description ||
+    options.fallbackFilename?.replace(/\.[^.]+$/, '') ||
+    ''
+
+  if (personName && kindLabel) return `${kindLabel} — ${personName}`
+  if (distinguishing && kindLabel && distinguishing !== kindLabel) {
+    return `${kindLabel} — ${distinguishing}`
+  }
+  return distinguishing || kindLabel || 'Untitled'
 }

@@ -6,6 +6,10 @@
   "author": "Everkeep",
   "license": "UNLICENSED",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jordanthiel/everkeep.git"
+  },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
@@ -30,6 +34,7 @@
     "@tanstack/react-query": "^5.66.0",
     "better-sqlite3": "^11.8.1",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
     "jszip": "^3.10.1",
     "lucide-react": "^0.474.0",
     "react": "^19.0.0",
@@ -123,6 +128,11 @@
     },
     "asarUnpack": [
       "**/*.{node,dll}"
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "jordanthiel",
+      "repo": "everkeep"
+    }
   }
 }

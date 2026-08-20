@@ -15,6 +15,7 @@ import { ExportPage } from '@renderer/pages/ExportPage'
 import { ReviewPage } from '@renderer/pages/ReviewPage'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
+import { UpdateBanner } from '@renderer/components/updates/UpdateBanner'
 import type { VaultSectionId } from '@shared/types/entry'
 
 const queryClient = new QueryClient({
@@ -71,6 +72,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <HashRouter>
+        <UpdateBanner />
         <Routes>
           <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/create-vault" element={<CreateVaultPage />} />

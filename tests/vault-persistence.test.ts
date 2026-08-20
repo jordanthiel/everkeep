@@ -70,7 +70,9 @@ describe('Everkeep vault persistence', () => {
     expect(reopened.metadata.householdName).toBe('Thiel Family')
 
     const people = service.listPeople()
+    const owner = people.find((p) => p.fullName === 'Jordan Thiel')
     const alex = people.find((p) => p.fullName === 'Alex Morgan')
+    expect(owner?.relationship).toBe('self')
     expect(alex?.relationship).toBe('spouse')
     expect(alex?.roles).toEqual(['emergency_contact'])
 

@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { RecentVaultsStore } from '../src/main/repositories/RecentVaultsStore'
 import { TEST_ARGON2_PARAMS } from '../src/main/security/EncryptionService'
 import { VaultService } from '../src/main/services/VaultService'
+import {
+  buildEntryTitle,
+  getSectionDefinition,
+  getVisibleFields
+} from '../src/shared/sections/definitions'
 
 describe('vault entries across sections', () => {
   const dirs: string[] = []
@@ -48,9 +53,17 @@ describe('vault entries across sections', () => {
     })
     expect(identity.sensitiveFields.number).toBe('123456789')
 
-    service.markEntryReviewed(legal.id)
+        service.markEntryReviewed(legal.id)
     const review = service.listReviewItems()
     expect(review.some((item) => item.title === 'Social Security')).toBe(true)
+
+    const updatedIdentity = service.updateEntry({
+      id: identity.id,
+      title: 'Social Security — Alex Morgan',
+      sensitiveFields: { number: '987654321' }
+    })
+    expect(updatedIdentity.title).toBe('Social Security — Alex Morgan')
+    expect(updatedIdentity.sensitiveFields.number).toBe('987654321')
 
     const reportPath = join(root, 'report.html')
     const exported = service.exportReport({
@@ -108,5 +121,34 @@ describe('vault entries across sections', () => {
     expect(() => service.openVault({ filePath: vaultPath })).toThrow(/password protected/i)
     service.openVault({ filePath: vaultPath, password: 'new-real-password' })
     service.closeVault()
+  })
+})
+
+describe('identity field layout', () => {
+  it('shows document fields without repeating legal name', () => {
+    const def = getSectionDefinition('identity')
+    expect(getVisibleFields(def, 'passport').map((field) => field.key)).toEqual([
+      'personId',
+      'number',
+      'issued',
+      'expires',
+      'issuingAuthority'
+    ])
+    expect(getVisibleFields(def, 'legal_name').map((field) => field.key)).toEqual([
+      'personId',
+      'fullLegalName',
+      'previousNames',
+      'dateOfBirth',
+      'placeOfBirth'
+    ])
+    expect(
+      buildEntryTitle({
+        def,
+        kind: 'passport',
+        title: '',
+        fields: {},
+        personName: 'Jane Smith'
+      })
+    ).toBe('Passport — Jane Smith')
   })
 })

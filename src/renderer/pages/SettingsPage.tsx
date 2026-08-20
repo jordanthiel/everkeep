@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Download, RefreshCw } from 'lucide-react'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
@@ -7,6 +8,7 @@ import { Label } from '@renderer/components/ui/Label'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
 import { LEGAL_DISCLAIMER } from '@shared/constants'
+import type { AppUpdateStatus } from '@shared/types/appUpdate'
 
 export function SettingsPage() {
   const navigate = useNavigate()
@@ -16,6 +18,17 @@ export function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null)
+  const [updateBusy, setUpdateBusy] = useState(false)
+
+  useEffect(() => {
+    const api = getEverkeepApi()
+    const unsubscribe = api.updates.onStatus(setUpdateStatus)
+    void unwrap(api.updates.getStatus())
+      .then(setUpdateStatus)
+      .catch(() => {})
+    return unsubscribe
+  }, [])
 
   async function handleBackup() {
     if (!session) return
@@ -73,6 +86,35 @@ export function SettingsPage() {
       navigate('/welcome')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to close vault.')
+    }
+  }
+
+  async function handleCheckForUpdate() {
+    setUpdateBusy(true)
+    try {
+      await unwrap(getEverkeepApi().updates.check())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to check for updates.')
+    } finally {
+      setUpdateBusy(false)
+    }
+  }
+
+  async function handleDownloadUpdate() {
+    setUpdateBusy(true)
+    try {
+      await unwrap(getEverkeepApi().updates.download())
+    } finally {
+      setUpdateBusy(false)
+    }
+  }
+
+  async function handleInstallUpdate() {
+    setUpdateBusy(true)
+    try {
+      await unwrap(getEverkeepApi().updates.install())
+    } finally {
+      setUpdateBusy(false)
     }
   }
 
@@ -152,6 +194,67 @@ export function SettingsPage() {
             </Button>
           </section>
         )}
+
+        <section className="rounded-xl border border-warm-200 bg-ivory-50/80 p-5">
+          <h2 className="font-medium text-charcoal-900">App updates</h2>
+          <p className="mt-2 text-sm text-warm-500">
+            Installed Everkeep checks GitHub Releases on startup and once a day. Your vault file is
+            never part of an app update.
+          </p>
+          <dl className="mt-4 space-y-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-warm-500">This version</dt>
+              <dd>{updateStatus?.currentVersion ?? '…'}</dd>
+            </div>
+            {updateStatus?.availableVersion && (
+              <div className="flex justify-between gap-4">
+                <dt className="text-warm-500">Available</dt>
+                <dd>{updateStatus.availableVersion}</dd>
+              </div>
+            )}
+          </dl>
+          <p className="mt-3 text-sm text-charcoal-800">
+            {updateStatus?.state === 'checking' && 'Checking for updates…'}
+            {updateStatus?.state === 'upToDate' &&
+              (updateStatus.message ?? 'You have the latest version.')}
+            {updateStatus?.state === 'available' &&
+              `Version ${updateStatus.availableVersion} is available.`}
+            {updateStatus?.state === 'downloading' &&
+              `Downloading… ${updateStatus.downloadPercent ?? 0}%`}
+            {updateStatus?.state === 'ready' &&
+              (updateStatus.message ?? 'Restart Everkeep to install the update.')}
+            {updateStatus?.state === 'error' && updateStatus.message}
+            {updateStatus?.state === 'unsupported' && updateStatus.message}
+            {updateStatus?.state === 'idle' && 'No update check has finished yet.'}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              onClick={() => void handleCheckForUpdate()}
+              disabled={updateBusy || updateStatus?.state === 'downloading'}
+            >
+              {updateBusy && updateStatus?.state === 'checking' ? 'Checking…' : 'Check for updates'}
+            </Button>
+            {updateStatus?.state === 'available' && (
+              <Button onClick={() => void handleDownloadUpdate()} disabled={updateBusy}>
+                <Download className="h-4 w-4" />
+                Download update
+              </Button>
+            )}
+            {updateStatus?.state === 'ready' && (
+              <Button onClick={() => void handleInstallUpdate()} disabled={updateBusy}>
+                <RefreshCw className="h-4 w-4" />
+                Restart to update
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              onClick={() => void unwrap(getEverkeepApi().updates.openReleasePage())}
+            >
+              Open releases
+            </Button>
+          </div>
+        </section>
 
         <section className="rounded-xl border border-warm-200 bg-ivory-50/80 p-5">
           <h2 className="font-medium text-charcoal-900">About Everkeep</h2>

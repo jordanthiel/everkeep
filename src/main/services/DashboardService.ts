@@ -20,7 +20,7 @@ export class DashboardService {
       {
         id: 'add-people',
         title: 'Add the people who matter',
-        description: 'Yourself, spouse/partner, children, and anyone who would handle affairs.',
+        description: 'Yourself, spouse/partner, children, and anyone who would handle affairs. Add each person once.',
         path: '/people',
         cta: 'Add people',
         priority: 1

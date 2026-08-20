@@ -17,10 +17,25 @@ import type {
   UpdateVaultEntryInput,
   VaultSectionId
 } from '../shared/types/entry'
+import type { AppUpdateStatus } from '../shared/types/appUpdate'
 
 const api: EverkeepApi = {
   ping: () => ipcRenderer.invoke(IpcChannels.app.ping),
   getVersion: () => ipcRenderer.invoke(IpcChannels.app.getVersion),
+  updates: {
+    getStatus: () => ipcRenderer.invoke(IpcChannels.app.getUpdateStatus),
+    check: () => ipcRenderer.invoke(IpcChannels.app.checkForUpdate),
+    download: () => ipcRenderer.invoke(IpcChannels.app.downloadUpdate),
+    install: () => ipcRenderer.invoke(IpcChannels.app.installUpdate),
+    openReleasePage: () => ipcRenderer.invoke(IpcChannels.app.openReleasePage),
+    onStatus: (listener: (status: AppUpdateStatus) => void) => {
+      const wrapped = (_event: unknown, status: AppUpdateStatus) => listener(status)
+      ipcRenderer.on(IpcChannels.app.updateStatus, wrapped)
+      return () => {
+        ipcRenderer.removeListener(IpcChannels.app.updateStatus, wrapped)
+      }
+    }
+  },
   vault: {
     create: (input: CreateVaultInput) => ipcRenderer.invoke(IpcChannels.vault.create, input),
     open: (input: OpenVaultInput) => ipcRenderer.invoke(IpcChannels.vault.open, input),

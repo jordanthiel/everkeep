@@ -42,6 +42,20 @@ Windows installers built on Apple Silicon can look fine but fail after install w
 Windows machine or the `Release Windows` GitHub Action, then confirm
 `release/win-unpacked/Everkeep.exe` exists before uploading the `.exe`.
 
+## App updates
+
+Installed copies check [GitHub Releases](https://github.com/jordanthiel/everkeep/releases/latest)
+a few seconds after launch, and again once a day. If a newer version is published,
+Everkeep shows a banner and a Settings → App updates section. The vault file is
+not replaced.
+
+Publishing a release must include electron-builder’s updater files:
+
+- Windows: `latest.yml` plus the NSIS installer (the `Release Windows` workflow uploads these)
+- macOS: `latest-mac.yml` plus the `.zip` (the `.dmg` is for first-time installs)
+
+Bump `version` in `package.json` before tagging `v*`.
+
 ## Marketing site
 
 The product landing page lives in [`website/`](./website) (React + Vite).

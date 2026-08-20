@@ -21,10 +21,8 @@ export function CreateVaultPage() {
 
   const [owner, setOwner] = useState({
     firstName: '',
-    middleName: '',
     lastName: '',
     preferredName: '',
-    dateOfBirth: '',
     spousePartner: '',
     householdName: ''
   })
@@ -91,10 +89,8 @@ export function CreateVaultPage() {
           filePath,
           householdName: owner.householdName || suggestedName,
           ownerFirstName: owner.firstName,
-          ownerMiddleName: owner.middleName || undefined,
           ownerLastName: owner.lastName,
           ownerPreferredName: owner.preferredName || undefined,
-          ownerDateOfBirth: owner.dateOfBirth || undefined,
           spousePartnerName: owner.spousePartner || undefined,
           password: protectWithPassword ? password : undefined
         })
@@ -138,7 +134,8 @@ export function CreateVaultPage() {
           <div>
             <h1 className="font-display text-3xl font-medium text-charcoal-900">About you</h1>
             <p className="mt-2 text-warm-500">
-              This helps label your vault and seed your household information.
+              This starts your household in People. Use the name you go by — legal names and IDs
+              like a passport go in Identity after the vault is created, so you won’t type them twice.
             </p>
 
             <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -148,14 +145,6 @@ export function CreateVaultPage() {
                   id="firstName"
                   value={owner.firstName}
                   onChange={(e) => setOwner((o) => ({ ...o, firstName: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label htmlFor="middleName">Middle name</Label>
-                <Input
-                  id="middleName"
-                  value={owner.middleName}
-                  onChange={(e) => setOwner((o) => ({ ...o, middleName: e.target.value }))}
                 />
               </div>
               <div>
@@ -172,15 +161,7 @@ export function CreateVaultPage() {
                   id="preferredName"
                   value={owner.preferredName}
                   onChange={(e) => setOwner((o) => ({ ...o, preferredName: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label htmlFor="dob">Date of birth</Label>
-                <Input
-                  id="dob"
-                  type="date"
-                  value={owner.dateOfBirth}
-                  onChange={(e) => setOwner((o) => ({ ...o, dateOfBirth: e.target.value }))}
+                  placeholder="Optional — what family should call you here"
                 />
               </div>
               <div>
@@ -189,6 +170,7 @@ export function CreateVaultPage() {
                   id="spouse"
                   value={owner.spousePartner}
                   onChange={(e) => setOwner((o) => ({ ...o, spousePartner: e.target.value }))}
+                  placeholder="Optional — we’ll add them to People too"
                 />
               </div>
               <div className="sm:col-span-2">
@@ -199,6 +181,9 @@ export function CreateVaultPage() {
                   value={owner.householdName}
                   onChange={(e) => setOwner((o) => ({ ...o, householdName: e.target.value }))}
                 />
+                <p className="mt-1 text-xs text-warm-400">
+                  Labels the vault file and home screen. It is not a legal name.
+                </p>
               </div>
             </div>
 

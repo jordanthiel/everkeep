@@ -1,4 +1,7 @@
 export const APP_NAME = 'Everkeep'
+export const GITHUB_OWNER = 'jordanthiel'
+export const GITHUB_REPO = 'everkeep'
+export const RELEASES_LATEST_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`
 export const VAULT_EXTENSION = '.everkeep'
 export const VAULT_FILE_FILTER: { name: string; extensions: string[] } = {
   name: 'Everkeep Vault',

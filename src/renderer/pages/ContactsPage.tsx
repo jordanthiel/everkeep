@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Save } from 'lucide-react'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
+import { RecordActions } from '@renderer/components/records/RecordActions'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
 import { Label } from '@renderer/components/ui/Label'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
-import type { ContactRole } from '@shared/types/contact'
+import type { Contact, ContactRole } from '@shared/types/contact'
 
 const ROLE_OPTIONS: Array<{ value: ContactRole; label: string }> = [
   { value: 'estate_attorney', label: 'Estate attorney' },
@@ -24,66 +25,137 @@ const ROLE_OPTIONS: Array<{ value: ContactRole; label: string }> = [
   { value: 'other', label: 'Other' }
 ]
 
+function emptyForm() {
+  return {
+    name: '',
+    company: '',
+    role: 'estate_attorney' as ContactRole,
+    phone: '',
+    email: ''
+  }
+}
+
 export function ContactsPage() {
   const queryClient = useQueryClient()
   const setSaveStatus = useVaultStore((s) => s.setSaveStatus)
-  const [name, setName] = useState('')
-  const [company, setCompany] = useState('')
-  const [role, setRole] = useState<ContactRole>('estate_attorney')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
+  const formRef = useRef<HTMLDivElement>(null)
+  const [form, setForm] = useState(emptyForm)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const contactsQuery = useQuery({
     queryKey: ['contacts'],
     queryFn: () => unwrap(getEverkeepApi().contacts.list())
   })
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      unwrap(
-        getEverkeepApi().contacts.create({
-          name: name.trim(),
-          company: company.trim() || null,
-          role,
-          phone: phone.trim() || null,
-          email: email.trim() || null
-        })
-      ),
-    onMutate: () => setSaveStatus('saving'),
+  function resetForm() {
+    setForm(emptyForm())
+    setEditingId(null)
+    setError(null)
+  }
+
+  function startEdit(contact: Contact) {
+    setEditingId(contact.id)
+    setForm({
+      name: contact.name,
+      company: contact.company ?? '',
+      role: contact.role ?? 'estate_attorney',
+      phone: contact.phone ?? '',
+      email: contact.email ?? ''
+    })
+    setError(null)
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload = {
+        name: form.name.trim(),
+        company: form.company.trim() || null,
+        role: form.role,
+        phone: form.phone.trim() || null,
+        email: form.email.trim() || null
+      }
+      if (editingId) {
+        return unwrap(
+          getEverkeepApi().contacts.update({
+            id: editingId,
+            ...payload,
+            lastReviewedAt: new Date().toISOString()
+          })
+        )
+      }
+      return unwrap(getEverkeepApi().contacts.create(payload))
+    },
+    onMutate: () => {
+      setError(null)
+      setSaveStatus('saving')
+    },
     onSuccess: async () => {
-      setName('')
-      setCompany('')
-      setPhone('')
-      setEmail('')
+      resetForm()
       setSaveStatus('saved')
       await queryClient.invalidateQueries({ queryKey: ['contacts'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      await queryClient.invalidateQueries({ queryKey: ['review'] })
       window.setTimeout(() => setSaveStatus('idle'), 1500)
     },
-    onError: () => setSaveStatus('error')
+    onError: (err) => {
+      setSaveStatus('error')
+      setError(err instanceof Error ? err.message : 'Unable to save.')
+    }
   })
 
   return (
     <SectionPage
       title="Important Contacts"
-      description="Professionals and organizations your family may need to reach — attorneys, advisors, doctors, and more."
+      description="Professionals and organizations your family may need to reach — attorneys, advisors, doctors, and more. Family members belong in People."
       badge="Actionable"
     >
-      <div className="mb-6 grid gap-4 rounded-xl border border-warm-200 bg-ivory-50/80 p-5 md:grid-cols-2">
+      <div
+        ref={formRef}
+        className={`mb-6 grid gap-4 rounded-xl border bg-ivory-50/80 p-5 md:grid-cols-2 ${
+          editingId ? 'border-forest-600/40 ring-1 ring-forest-600/20' : 'border-warm-200'
+        }`}
+      >
+        <div className="md:col-span-2 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-charcoal-900">
+              {editingId ? 'Edit contact' : 'New contact'}
+            </p>
+            <p className="mt-1 text-xs text-warm-400">
+              Save stores this contact. A blank record is then ready so you can keep going.
+            </p>
+          </div>
+          {editingId && (
+            <Button size="sm" variant="ghost" onClick={resetForm}>
+              Cancel
+            </Button>
+          )}
+        </div>
         <div>
           <Label htmlFor="contactName">Name</Label>
-          <Input id="contactName" value={name} onChange={(e) => setName(e.target.value)} />
+          <Input
+            id="contactName"
+            value={form.name}
+            onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))}
+          />
         </div>
         <div>
           <Label htmlFor="company">Company</Label>
-          <Input id="company" value={company} onChange={(e) => setCompany(e.target.value)} />
+          <Input
+            id="company"
+            value={form.company}
+            onChange={(e) => setForm((current) => ({ ...current, company: e.target.value }))}
+          />
         </div>
         <div>
           <Label htmlFor="role">Role</Label>
           <select
             id="role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as ContactRole)}
+            value={form.role}
+            onChange={(e) =>
+              setForm((current) => ({ ...current, role: e.target.value as ContactRole }))
+            }
             className="flex h-10 w-full rounded-md border border-warm-300 bg-ivory-50 px-3 text-sm"
           >
             {ROLE_OPTIONS.map((option) => (
@@ -95,20 +167,29 @@ export function ContactsPage() {
         </div>
         <div>
           <Label htmlFor="phone">Phone</Label>
-          <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input
+            id="phone"
+            value={form.phone}
+            onChange={(e) => setForm((current) => ({ ...current, phone: e.target.value }))}
+          />
         </div>
         <div className="md:col-span-2">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Input
+            id="email"
+            value={form.email}
+            onChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))}
+          />
         </div>
         <div className="md:col-span-2">
           <Button
-            disabled={!name.trim() || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            disabled={!form.name.trim() || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
           >
-            <Plus className="h-4 w-4" />
-            Add contact
+            <Save className="h-4 w-4" />
+            {saveMutation.isPending ? 'Saving…' : 'Save'}
           </Button>
+          {error && <p className="mt-2 text-sm text-red-800">{error}</p>}
         </div>
       </div>
 
@@ -126,20 +207,20 @@ export function ContactsPage() {
                   {contact.company ? ` · ${contact.company}` : ''}
                 </p>
                 <p className="mt-2 text-sm text-warm-500">
-                  {[contact.phone, contact.email].filter(Boolean).join(' · ') || 'No phone or email yet'}
+                  {[contact.phone, contact.email].filter(Boolean).join(' · ') ||
+                    'No phone or email yet'}
                 </p>
               </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() =>
-                  void unwrap(getEverkeepApi().contacts.archive(contact.id)).then(() =>
-                    queryClient.invalidateQueries({ queryKey: ['contacts'] })
-                  )
+              <RecordActions
+                onEdit={() => startEdit(contact)}
+                onArchive={() =>
+                  void unwrap(getEverkeepApi().contacts.archive(contact.id)).then(async () => {
+                    if (editingId === contact.id) resetForm()
+                    await queryClient.invalidateQueries({ queryKey: ['contacts'] })
+                    await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+                  })
                 }
-              >
-                Archive
-              </Button>
+              />
             </div>
           </article>
         ))}

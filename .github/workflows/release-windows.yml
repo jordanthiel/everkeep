@@ -1,6 +1,7 @@
 name: Release Windows
 
-# Builds a real x64 Windows installer on windows-latest.
+# Builds a real x64 Windows installer on windows-latest and publishes it to
+# GitHub Releases (including latest.yml so installed apps can auto-update).
 # Cross-building NSIS from macOS often produces installers that only
 # contain the uninstaller — then Windows can't find Everkeep.exe.
 
@@ -13,6 +14,8 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -24,8 +27,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Windows x64 installer
-        run: npm run dist:win
+      - name: Build and publish Windows x64 installer
+        run: npm run build && npx electron-builder --win --x64 --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -34,3 +39,4 @@ jobs:
           path: |
             release/Everkeep-win-x64.exe
             release/Everkeep-win-x64.zip
+            release/latest.yml

@@ -42,7 +42,7 @@ export function ReviewPage() {
   return (
     <SectionPage
       title="Review"
-      description="Information becomes risky when people assume it is current but it isn’t. Confirm what is still accurate."
+      description="Open a record to edit details that have changed — for example a renewed passport. Use Still accurate only when nothing needs updating."
       badge="Yearly habit"
     >
       <div className="mb-6 rounded-xl border border-warm-200 bg-ivory-50/80 px-5 py-4 text-sm text-warm-500">

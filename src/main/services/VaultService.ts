@@ -194,7 +194,7 @@ export class VaultService {
         if (ownerName.trim()) {
           people.create({
             fullName: ownerName.trim(),
-            relationship: 'other',
+            relationship: 'self',
             dateOfBirth: input.ownerDateOfBirth ?? null,
             notes: 'Vault owner'
           })

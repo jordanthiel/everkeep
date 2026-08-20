@@ -3,6 +3,7 @@ import type { VaultDatabase } from '../database/connection'
 import { EntryRepository } from '../repositories/EntryRepository'
 import type { EncryptionService } from '../security/EncryptionService'
 import { SECTION_DEFINITIONS } from '../../shared/sections/definitions'
+import { PERSON_RELATIONSHIP_OPTIONS } from '../../shared/types/person'
 import type { ExportReportInput, VaultSectionId } from '../../shared/types/entry'
 import type { VaultMetadata } from '../../shared/types/vault'
 
@@ -36,16 +37,18 @@ export class ExportService {
   ): string {
     const people = this.db
       .prepare(
-        `SELECT full_name, relationship, phone, email, notes
+        `SELECT id, full_name, relationship, phone, email, notes
          FROM people WHERE archived_at IS NULL ORDER BY full_name COLLATE NOCASE`
       )
       .all() as Array<{
+      id: string
       full_name: string
       relationship: string | null
       phone: string | null
       email: string | null
       notes: string | null
     }>
+    const peopleById = new Map(people.map((person) => [person.id, person.full_name]))
 
     const contacts = this.db
       .prepare(
@@ -101,8 +104,12 @@ export class ExportService {
     parts.push(`<h2>People</h2>`)
     if (people.length === 0) parts.push('<p class="meta">None recorded.</p>')
     for (const person of people) {
+      const relationship =
+        PERSON_RELATIONSHIP_OPTIONS.find((item) => item.value === person.relationship)?.label ??
+        person.relationship ??
+        'No relationship'
       parts.push(`<div class="card"><strong>${escapeHtml(person.full_name)}</strong>
-        <div class="meta">${escapeHtml(person.relationship ?? 'No relationship')}</div>
+        <div class="meta">${escapeHtml(relationship)}</div>
         <div>${escapeHtml([person.phone, person.email].filter(Boolean).join(' · ') || 'No contact info')}</div>
       </div>`)
     }
@@ -137,12 +144,18 @@ export class ExportService {
       }
       for (const entry of sectionEntries) {
         parts.push(`<div class="card"><strong>${escapeHtml(entry.title)}</strong>`)
-        if (entry.kind) parts.push(`<div class="meta">${escapeHtml(entry.kind)}</div>`)
+        if (entry.kind) {
+          const kindLabel = def.kinds?.find((item) => item.value === entry.kind)?.label ?? entry.kind
+          parts.push(`<div class="meta">${escapeHtml(kindLabel)}</div>`)
+        }
         parts.push('<dl>')
         for (const [key, value] of Object.entries(entry.fields)) {
           if (!value) continue
-          const label = def.fields.find((f) => f.key === key)?.label ?? key
-          parts.push(`<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`)
+          const field = def.fields.find((f) => f.key === key)
+          const label = field?.label ?? key
+          const display =
+            field?.type === 'person' ? (peopleById.get(value) ?? value) : value
+          parts.push(`<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(display)}</dd>`)
         }
         if (includeSensitive) {
           for (const [key, value] of Object.entries(entry.sensitiveFields)) {

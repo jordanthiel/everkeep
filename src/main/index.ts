@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from 'electron'
 import { registerIpcHandlers, shutdownVaultService } from './ipc/handlers'
 import { createMainWindow } from './window'
+import { getUpdateService } from './services/UpdateService'
 
 // Disable Chromium features that aren't needed
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
@@ -13,6 +14,7 @@ if (process.platform === 'win32') {
 function bootstrap(): void {
   registerIpcHandlers()
   createMainWindow()
+  getUpdateService().start()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

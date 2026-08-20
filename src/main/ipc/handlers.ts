@@ -37,6 +37,7 @@ import {
 } from '../files/paths'
 import { RecentVaultsStore } from '../repositories/RecentVaultsStore'
 import { VaultService } from '../services/VaultService'
+import { getUpdateService } from '../services/UpdateService'
 import { fromError, ok } from './result'
 
 let vaultService: VaultService | null = null
@@ -107,6 +108,44 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.app.getVersion, async () => {
     const { app } = await import('electron')
     return ok({ version: app.getVersion() })
+  })
+
+  ipcMain.handle(IpcChannels.app.getUpdateStatus, async () => {
+    return ok(getUpdateService().getStatus())
+  })
+
+  ipcMain.handle(IpcChannels.app.checkForUpdate, async () => {
+    try {
+      return ok(await getUpdateService().check({ userInitiated: true }))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.app.downloadUpdate, async () => {
+    try {
+      return ok(await getUpdateService().download())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.app.installUpdate, async () => {
+    try {
+      shutdownVaultService()
+      getUpdateService().install()
+      return ok({ quitting: true })
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.app.openReleasePage, async () => {
+    try {
+      return ok(await getUpdateService().openReleasePage())
+    } catch (error) {
+      return fromError(error)
+    }
   })
 
   ipcMain.handle(IpcChannels.vault.getDefaultVaultDir, async () => {

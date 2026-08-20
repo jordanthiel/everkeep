@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Save } from 'lucide-react'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
+import { RecordActions } from '@renderer/components/records/RecordActions'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
 import { Label } from '@renderer/components/ui/Label'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
-import type { AccountType } from '@shared/types/account'
+import type { Account, AccountType } from '@shared/types/account'
 
 const ACCOUNT_TYPES: Array<{ value: AccountType; label: string }> = [
   { value: 'checking', label: 'Checking' },
@@ -23,16 +24,24 @@ const ACCOUNT_TYPES: Array<{ value: AccountType; label: string }> = [
   { value: 'other', label: 'Other' }
 ]
 
+function emptyForm() {
+  return {
+    institution: '',
+    accountName: '',
+    accountType: 'checking' as AccountType,
+    lastFour: '',
+    fullAccountNumber: '',
+    beneficiaryPersonId: '',
+    beneficiaryPercent: '100'
+  }
+}
+
 export function FinancialPage() {
   const queryClient = useQueryClient()
   const setSaveStatus = useVaultStore((s) => s.setSaveStatus)
-  const [institution, setInstitution] = useState('')
-  const [accountName, setAccountName] = useState('')
-  const [accountType, setAccountType] = useState<AccountType>('checking')
-  const [lastFour, setLastFour] = useState('')
-  const [fullAccountNumber, setFullAccountNumber] = useState('')
-  const [beneficiaryPersonId, setBeneficiaryPersonId] = useState('')
-  const [beneficiaryPercent, setBeneficiaryPercent] = useState('100')
+  const formRef = useRef<HTMLDivElement>(null)
+  const [form, setForm] = useState(emptyForm)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const accountsQuery = useQuery({
@@ -45,50 +54,76 @@ export function FinancialPage() {
     queryFn: () => unwrap(getEverkeepApi().people.list())
   })
 
-  const defaultBeneficiary = useMemo(
-    () => peopleQuery.data?.[0]?.id ?? '',
-    [peopleQuery.data]
-  )
   const people = peopleQuery.data ?? []
+  const defaultBeneficiary = people[0]?.id ?? ''
 
-  const createMutation = useMutation({
+  function resetForm() {
+    setForm(emptyForm())
+    setEditingId(null)
+    setError(null)
+  }
+
+  function startEdit(account: Account) {
+    const primary = account.beneficiaries.find((item) => item.designationType === 'primary')
+    setEditingId(account.id)
+    setForm({
+      institution: account.institution,
+      accountName: account.accountName ?? '',
+      accountType: account.accountType,
+      lastFour: account.lastFour ?? '',
+      fullAccountNumber: account.fullAccountNumber ?? '',
+      beneficiaryPersonId: primary?.personId ?? '',
+      beneficiaryPercent: String(primary?.percentage ?? 100)
+    })
+    setError(null)
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  const saveMutation = useMutation({
     mutationFn: () => {
+      const personId = form.beneficiaryPersonId || defaultBeneficiary
       const beneficiaries =
-        (beneficiaryPersonId || defaultBeneficiary) && Number(beneficiaryPercent) > 0
+        personId && Number(form.beneficiaryPercent) > 0
           ? [
               {
-                personId: beneficiaryPersonId || defaultBeneficiary,
+                personId,
                 designationType: 'primary' as const,
-                percentage: Number(beneficiaryPercent),
+                percentage: Number(form.beneficiaryPercent),
                 perStirpes: false
               }
             ]
           : []
 
-      return unwrap(
-        getEverkeepApi().accounts.create({
-          institution: institution.trim(),
-          accountName: accountName.trim() || null,
-          accountType,
-          lastFour: lastFour.trim() || null,
-          fullAccountNumber: fullAccountNumber.trim() || null,
-          beneficiaries
-        })
-      )
+      const payload = {
+        institution: form.institution.trim(),
+        accountName: form.accountName.trim() || null,
+        accountType: form.accountType,
+        lastFour: form.lastFour.trim() || null,
+        fullAccountNumber: form.fullAccountNumber.trim() || null,
+        beneficiaries
+      }
+
+      if (editingId) {
+        return unwrap(
+          getEverkeepApi().accounts.update({
+            id: editingId,
+            ...payload,
+            lastReviewedAt: new Date().toISOString()
+          })
+        )
+      }
+      return unwrap(getEverkeepApi().accounts.create(payload))
     },
     onMutate: () => {
       setError(null)
       setSaveStatus('saving')
     },
     onSuccess: async () => {
-      setInstitution('')
-      setAccountName('')
-      setLastFour('')
-      setFullAccountNumber('')
-      setBeneficiaryPercent('100')
+      resetForm()
       setSaveStatus('saved')
       await queryClient.invalidateQueries({ queryKey: ['accounts'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      await queryClient.invalidateQueries({ queryKey: ['review'] })
       window.setTimeout(() => setSaveStatus('idle'), 1500)
     },
     onError: (err) => {
@@ -103,14 +138,34 @@ export function FinancialPage() {
       description="Accounts your family would need to discover — institutions, ownership, and beneficiaries. Balances are optional."
       badge="Discovery first"
     >
-      <div className="mb-6 grid gap-4 rounded-xl border border-warm-200 bg-ivory-50/80 p-5 md:grid-cols-2">
+      <div
+        ref={formRef}
+        className={`mb-6 grid gap-4 rounded-xl border bg-ivory-50/80 p-5 md:grid-cols-2 ${
+          editingId ? 'border-forest-600/40 ring-1 ring-forest-600/20' : 'border-warm-200'
+        }`}
+      >
+        <div className="md:col-span-2 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-charcoal-900">
+              {editingId ? 'Edit account' : 'New account'}
+            </p>
+            <p className="mt-1 text-xs text-warm-400">
+              Save stores this account. A blank record is then ready so you can keep going.
+            </p>
+          </div>
+          {editingId && (
+            <Button size="sm" variant="ghost" onClick={resetForm}>
+              Cancel
+            </Button>
+          )}
+        </div>
         <div>
           <Label htmlFor="institution">Institution</Label>
           <Input
             id="institution"
             placeholder="Fidelity, Chase…"
-            value={institution}
-            onChange={(e) => setInstitution(e.target.value)}
+            value={form.institution}
+            onChange={(e) => setForm((current) => ({ ...current, institution: e.target.value }))}
           />
         </div>
         <div>
@@ -118,16 +173,18 @@ export function FinancialPage() {
           <Input
             id="accountName"
             placeholder="Roth IRA"
-            value={accountName}
-            onChange={(e) => setAccountName(e.target.value)}
+            value={form.accountName}
+            onChange={(e) => setForm((current) => ({ ...current, accountName: e.target.value }))}
           />
         </div>
         <div>
           <Label htmlFor="accountType">Account type</Label>
           <select
             id="accountType"
-            value={accountType}
-            onChange={(e) => setAccountType(e.target.value as AccountType)}
+            value={form.accountType}
+            onChange={(e) =>
+              setForm((current) => ({ ...current, accountType: e.target.value as AccountType }))
+            }
             className="flex h-10 w-full rounded-md border border-warm-300 bg-ivory-50 px-3 text-sm"
           >
             {ACCOUNT_TYPES.map((type) => (
@@ -142,16 +199,25 @@ export function FinancialPage() {
           <Input
             id="lastFour"
             maxLength={4}
-            value={lastFour}
-            onChange={(e) => setLastFour(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            value={form.lastFour}
+            onChange={(e) =>
+              setForm((current) => ({
+                ...current,
+                lastFour: e.target.value.replace(/\D/g, '').slice(0, 4)
+              }))
+            }
           />
         </div>
         <div className="md:col-span-2">
-          <Label htmlFor="fullNumber">Full account number (optional, encrypted if vault is protected)</Label>
+          <Label htmlFor="fullNumber">
+            Full account number (optional, encrypted if vault is protected)
+          </Label>
           <Input
             id="fullNumber"
-            value={fullAccountNumber}
-            onChange={(e) => setFullAccountNumber(e.target.value)}
+            value={form.fullAccountNumber}
+            onChange={(e) =>
+              setForm((current) => ({ ...current, fullAccountNumber: e.target.value }))
+            }
             autoComplete="off"
           />
         </div>
@@ -159,8 +225,10 @@ export function FinancialPage() {
           <Label htmlFor="beneficiary">Primary beneficiary</Label>
           <select
             id="beneficiary"
-            value={beneficiaryPersonId || defaultBeneficiary}
-            onChange={(e) => setBeneficiaryPersonId(e.target.value)}
+            value={form.beneficiaryPersonId || defaultBeneficiary}
+            onChange={(e) =>
+              setForm((current) => ({ ...current, beneficiaryPersonId: e.target.value }))
+            }
             className="flex h-10 w-full rounded-md border border-warm-300 bg-ivory-50 px-3 text-sm"
           >
             <option value="">None yet</option>
@@ -181,17 +249,19 @@ export function FinancialPage() {
             type="number"
             min={0}
             max={100}
-            value={beneficiaryPercent}
-            onChange={(e) => setBeneficiaryPercent(e.target.value)}
+            value={form.beneficiaryPercent}
+            onChange={(e) =>
+              setForm((current) => ({ ...current, beneficiaryPercent: e.target.value }))
+            }
           />
         </div>
         <div className="md:col-span-2">
           <Button
-            disabled={!institution.trim() || createMutation.isPending}
-            onClick={() => createMutation.mutate()}
+            disabled={!form.institution.trim() || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
           >
-            <Plus className="h-4 w-4" />
-            Add account
+            <Save className="h-4 w-4" />
+            {saveMutation.isPending ? 'Saving…' : 'Save'}
           </Button>
           {error && <p className="mt-2 text-sm text-red-800">{error}</p>}
         </div>
@@ -239,18 +309,16 @@ export function FinancialPage() {
                     )}
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() =>
+                <RecordActions
+                  onEdit={() => startEdit(account)}
+                  onArchive={() =>
                     void unwrap(getEverkeepApi().accounts.archive(account.id)).then(async () => {
+                      if (editingId === account.id) resetForm()
                       await queryClient.invalidateQueries({ queryKey: ['accounts'] })
                       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
                     })
                   }
-                >
-                  Archive
-                </Button>
+                />
               </div>
             </article>
           )
@@ -258,7 +326,8 @@ export function FinancialPage() {
 
         {accountsQuery.data?.length === 0 && (
           <div className="rounded-xl border border-dashed border-warm-300 px-6 py-12 text-center text-sm text-warm-500">
-            No accounts yet. Add a checking account or retirement account your family should know about.
+            No accounts yet. Save a checking account or retirement account your family should know
+            about.
           </div>
         )}
       </div>

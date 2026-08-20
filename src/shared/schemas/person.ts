@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 export const PersonRelationshipSchema = z.enum([
+  'self',
   'spouse',
   'partner',
   'child',

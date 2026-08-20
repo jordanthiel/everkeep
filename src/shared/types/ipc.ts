@@ -21,6 +21,7 @@ import type {
   VaultSectionId
 } from './entry'
 import type { Attachment } from './attachment'
+import type { AppUpdateStatus } from './appUpdate'
 
 export const IpcChannels = {
   vault: {
@@ -90,7 +91,13 @@ export const IpcChannels = {
   },
   app: {
     ping: 'app:ping',
-    getVersion: 'app:getVersion'
+    getVersion: 'app:getVersion',
+    updateStatus: 'app:updateStatus',
+    getUpdateStatus: 'app:getUpdateStatus',
+    checkForUpdate: 'app:checkForUpdate',
+    downloadUpdate: 'app:downloadUpdate',
+    installUpdate: 'app:installUpdate',
+    openReleasePage: 'app:openReleasePage'
   }
 } as const
 
@@ -101,6 +108,14 @@ export type IpcResult<T> =
 export interface EverkeepApi {
   ping: () => Promise<IpcResult<{ message: string }>>
   getVersion: () => Promise<IpcResult<{ version: string }>>
+  updates: {
+    getStatus: () => Promise<IpcResult<AppUpdateStatus>>
+    check: () => Promise<IpcResult<AppUpdateStatus>>
+    download: () => Promise<IpcResult<AppUpdateStatus>>
+    install: () => Promise<IpcResult<{ quitting: boolean }>>
+    openReleasePage: () => Promise<IpcResult<{ opened: boolean }>>
+    onStatus: (listener: (status: AppUpdateStatus) => void) => () => void
+  }
   vault: {
     create: (input: CreateVaultInput) => Promise<IpcResult<VaultSession>>
     open: (input: OpenVaultInput) => Promise<IpcResult<VaultSession>>
