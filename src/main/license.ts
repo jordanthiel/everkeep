@@ -12,7 +12,7 @@ import { LICENSE_PRODUCT_ID } from '../shared/types/license'
  * that enforces licensing, otherwise no minted key will verify.
  */
 export const EVERKEEP_LICENSE_PUBLIC_KEY_B64 =
-  'REPLACE_WITH_REAL_PUBLIC_KEY_FROM_mint-license.mjs_--init'
+  'MCowBQYDK2VwAyEAKG7OOw1tR35t1xpCVlhu5ZZDOjI5UjmLndQ22tgS4KU='
 
 export const LICENSE_KEY_PREFIX = 'EK1'
 
