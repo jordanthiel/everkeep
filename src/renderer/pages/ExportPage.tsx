@@ -1,13 +1,16 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
 import { Button } from '@renderer/components/ui/Button'
-import { getEverkeepApi, unwrap } from '@renderer/lib/api'
+import { ApiError, getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
 
 export function ExportPage() {
+  const navigate = useNavigate()
   const session = useVaultStore((s) => s.session)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [needsLicense, setNeedsLicense] = useState(false)
   const [includeSensitive, setIncludeSensitive] = useState(false)
 
   async function backup() {
@@ -26,6 +29,7 @@ export function ExportPage() {
     if (!session) return
     setError(null)
     setMessage(null)
+    setNeedsLicense(false)
     try {
       const path = await unwrap(
         getEverkeepApi().vault.pickExportPath(`${session.metadata.name}-report`)
@@ -39,7 +43,12 @@ export function ExportPage() {
       )
       setMessage(`Report saved to ${result.path}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed.')
+      if (err instanceof ApiError && err.code === 'LICENSE_REQUIRED') {
+        setNeedsLicense(true)
+        setError(null)
+      } else {
+        setError(err instanceof Error ? err.message : 'Export failed.')
+      }
     }
   }
 
@@ -82,6 +91,24 @@ export function ExportPage() {
 
         {message && <p className="text-sm text-forest-700">{message}</p>}
         {error && <p className="text-sm text-red-800">{error}</p>}
+        {needsLicense && (
+          <div className="rounded-xl border border-brass-500/40 bg-ivory-50 p-5">
+            <h3 className="font-medium text-charcoal-900">Exporting reports is a paid feature</h3>
+            <p className="mt-2 text-sm leading-relaxed text-warm-500">
+              The free trial covers organizing everything in your vault. Buy Everkeep once — $79
+              for your whole household, forever — to unlock report exports for the people you trust.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <Button onClick={() => navigate('/settings')}>Go to Settings → License</Button>
+              <Button
+                variant="secondary"
+                onClick={() => void unwrap(getEverkeepApi().license.openPurchasePage())}
+              >
+                Buy Everkeep
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </SectionPage>
   )

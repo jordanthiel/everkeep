@@ -42,3 +42,9 @@ export const NAV_FOOTER = [
 
 export const LEGAL_DISCLAIMER =
   'Everkeep helps you organize and communicate information. It does not create a will, trust, power of attorney, beneficiary designation, or other legally binding estate-planning document and does not provide legal, tax, or financial advice.'
+
+/**
+ * Where the in-app "Buy Everkeep" button points. Update once the marketing
+ * site is deployed; the pricing section lives at /#pricing.
+ */
+export const PURCHASE_URL = 'https://everkeep.app/#pricing'

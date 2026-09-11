@@ -14,6 +14,9 @@ export function SiteHeader() {
           <a href="#privacy" className="hidden transition hover:text-forest-700 sm:inline">
             Privacy
           </a>
+          <a href="#pricing" className="hidden transition hover:text-forest-700 sm:inline">
+            Pricing
+          </a>
           <a
             href="#download"
             className="rounded-md bg-forest-700 px-3.5 py-2 text-ivory-50 transition hover:bg-forest-600"

@@ -1,8 +1,9 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { IpcChannels } from '../../shared/types/ipc'
 import {
   AccountIdSchema,
+  ActivateLicenseSchema,
   AttachFileSchema,
   AttachmentIdSchema,
   BackupVaultSchema,
@@ -37,10 +38,20 @@ import {
 } from '../files/paths'
 import { RecentVaultsStore } from '../repositories/RecentVaultsStore'
 import { VaultService } from '../services/VaultService'
+import { LicenseError, LicenseService } from '../services/LicenseService'
+import { PURCHASE_URL } from '../../shared/constants'
 import { getUpdateService } from '../services/UpdateService'
-import { fromError, ok } from './result'
+import { fail, fromError, ok } from './result'
 
 let vaultService: VaultService | null = null
+let licenseService: LicenseService | null = null
+
+function getLicenseService(): LicenseService {
+  if (!licenseService) {
+    licenseService = new LicenseService(app.getPath('userData'))
+  }
+  return licenseService
+}
 
 function getVaultService(): VaultService {
   if (!vaultService) {
@@ -511,6 +522,12 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IpcChannels.vault.exportReport, async (_event, raw) => {
     try {
+      if (!getLicenseService().isLicensed()) {
+        return fail(
+          'LICENSE_REQUIRED',
+          'Exporting a report requires an Everkeep license. Activate yours in Settings → License.'
+        )
+      }
       return ok(service.exportReport(ExportReportSchema.parse(raw)))
     } catch (error) {
       return fromError(error)
@@ -605,6 +622,44 @@ export function registerIpcHandlers(): void {
     try {
       const { id } = AttachmentIdSchema.parse(typeof raw === 'string' ? { id: raw } : raw)
       return ok(service.removeAttachment(id))
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.license.getStatus, async () => {
+    try {
+      return ok(getLicenseService().getStatus())
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.license.activate, async (_event, raw) => {
+    try {
+      const { key } = ActivateLicenseSchema.parse(raw)
+      return ok(getLicenseService().activate(key))
+    } catch (error) {
+      if (error instanceof LicenseError) {
+        return fail(error.code, error.message)
+      }
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.license.deactivate, async () => {
+    try {
+      getLicenseService().deactivate()
+      return ok({ deactivated: true })
+    } catch (error) {
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.license.openPurchasePage, async () => {
+    try {
+      await shell.openExternal(PURCHASE_URL)
+      return ok({ opened: true })
     } catch (error) {
       return fromError(error)
     }

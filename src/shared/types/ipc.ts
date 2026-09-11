@@ -22,6 +22,7 @@ import type {
 } from './entry'
 import type { Attachment } from './attachment'
 import type { AppUpdateStatus } from './appUpdate'
+import type { LicenseState } from './license'
 
 export const IpcChannels = {
   vault: {
@@ -98,6 +99,12 @@ export const IpcChannels = {
     downloadUpdate: 'app:downloadUpdate',
     installUpdate: 'app:installUpdate',
     openReleasePage: 'app:openReleasePage'
+  },
+  license: {
+    getStatus: 'license:getStatus',
+    activate: 'license:activate',
+    deactivate: 'license:deactivate',
+    openPurchasePage: 'license:openPurchasePage'
   }
 } as const
 
@@ -115,6 +122,12 @@ export interface EverkeepApi {
     install: () => Promise<IpcResult<{ quitting: boolean }>>
     openReleasePage: () => Promise<IpcResult<{ opened: boolean }>>
     onStatus: (listener: (status: AppUpdateStatus) => void) => () => void
+  }
+  license: {
+    getStatus: () => Promise<IpcResult<LicenseState>>
+    activate: (key: string) => Promise<IpcResult<LicenseState>>
+    deactivate: () => Promise<IpcResult<{ deactivated: boolean }>>
+    openPurchasePage: () => Promise<IpcResult<{ opened: boolean }>>
   }
   vault: {
     create: (input: CreateVaultInput) => Promise<IpcResult<VaultSession>>

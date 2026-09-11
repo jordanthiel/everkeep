@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Download, RefreshCw } from 'lucide-react'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
+import { LicenseSection } from '@renderer/components/license/LicenseSection'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
 import { Label } from '@renderer/components/ui/Label'
@@ -255,6 +256,8 @@ export function SettingsPage() {
             </Button>
           </div>
         </section>
+
+        <LicenseSection />
 
         <section className="rounded-xl border border-warm-200 bg-ivory-50/80 p-5">
           <h2 className="font-medium text-charcoal-900">About Everkeep</h2>
