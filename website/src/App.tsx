@@ -1,6 +1,7 @@
 import { DownloadButtons } from './components/DownloadButtons'
 import { EverkeepMark } from './components/EverkeepMark'
 import { HeroScene } from './components/HeroScene'
+import { PricingSection } from './components/PricingSection'
 import { SiteHeader } from './components/SiteHeader'
 import { downloads } from './config/downloads'
 
@@ -142,6 +143,8 @@ export default function App() {
           </ul>
         </div>
       </section>
+
+      <PricingSection />
 
       <section id="download" className="border-t border-warm-200 bg-ivory-50">
         <div className="mx-auto max-w-6xl px-6 py-20 md:px-8 md:py-28">

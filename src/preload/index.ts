@@ -108,6 +108,12 @@ const api: EverkeepApi = {
     open: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.open, { id }),
     reveal: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.reveal, { id }),
     remove: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.remove, { id })
+  },
+  license: {
+    getStatus: () => ipcRenderer.invoke(IpcChannels.license.getStatus),
+    activate: (key: string) => ipcRenderer.invoke(IpcChannels.license.activate, { key }),
+    deactivate: () => ipcRenderer.invoke(IpcChannels.license.deactivate),
+    openPurchasePage: () => ipcRenderer.invoke(IpcChannels.license.openPurchasePage)
   }
 }
 
