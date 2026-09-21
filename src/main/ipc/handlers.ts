@@ -1,9 +1,15 @@
-import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
+import { registerSharingHandlers } from './sharingHandlers'
+import { SavePacketDraftSchema } from '../../shared/schemas/packet'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { IpcChannels } from '../../shared/types/ipc'
 import {
+  ActivateLicenseKeySchema,
+  HandoffSchema,
+  BackupCheckSchema,
+  RestoreBackupSchema,
+  ExportOptionsSchema,
   AccountIdSchema,
-  ActivateLicenseSchema,
   AttachFileSchema,
   AttachmentIdSchema,
   BackupVaultSchema,
@@ -37,18 +43,18 @@ import {
   getRecoveryBackupDirectory
 } from '../files/paths'
 import { RecentVaultsStore } from '../repositories/RecentVaultsStore'
+import { LicenseService } from '../services/LicenseService'
 import { VaultService } from '../services/VaultService'
-import { LicenseError, LicenseService } from '../services/LicenseService'
-import { PURCHASE_URL } from '../../shared/constants'
 import { getUpdateService } from '../services/UpdateService'
-import { fail, fromError, ok } from './result'
+import { fromError, ok } from './result'
 
+let stopSharing: (() => void) | null = null
 let vaultService: VaultService | null = null
 let licenseService: LicenseService | null = null
 
 function getLicenseService(): LicenseService {
   if (!licenseService) {
-    licenseService = new LicenseService(app.getPath('userData'))
+    licenseService = new LicenseService()
   }
   return licenseService
 }
@@ -57,7 +63,8 @@ function getVaultService(): VaultService {
   if (!vaultService) {
     vaultService = new VaultService({
       recentStore: new RecentVaultsStore(getRecentVaultsPath()),
-      recoveryDirectory: getRecoveryBackupDirectory()
+      recoveryDirectory: getRecoveryBackupDirectory(),
+      licenseService: getLicenseService()
     })
   }
   return vaultService
@@ -112,7 +119,25 @@ async function pickAttachmentFile(): Promise<{ path: string; filename: string } 
 }
 
 export function registerIpcHandlers(): void {
+  stopSharing = registerSharingHandlers(getVaultService)
   const service = getVaultService()
+  ipcMain.handle(IpcChannels.vault.getPacketDraft, async () => { try { return ok(service.getPacketDraft()) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.savePacketDraft, async (_event, raw) => { try { const input = SavePacketDraftSchema.parse(raw); if (service.getStatus().session?.metadata.id !== input.vaultId) throw new Error('The active vault has changed.'); return ok(service.savePacketDraft(input.draft)) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.clearPacketDraft, async () => { try { return ok(service.clearPacketDraft()) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.getHandoff, async () => { try { return ok(service.getHandoff()) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.updateHandoff, async (_event, raw) => { try { return ok(service.updateHandoff(HandoffSchema.parse(raw))) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.getExportCatalog, async () => { try { return ok(service.getExportCatalog()) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.previewReport, async (_event, raw) => { try { return ok(service.previewReport(ExportOptionsSchema.parse(raw))) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.verifyBackup, async (_event, raw) => { try { return ok(await service.verifyBackup(BackupCheckSchema.parse(raw))) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.restoreBackup, async (_event, raw) => { try { return ok(await service.restoreBackup(RestoreBackupSchema.parse(raw))) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.pickRestorePath, async () => {
+    try {
+      const parent = getParentWindow()
+      const options = { title: 'Choose an Everkeep backup', filters: [{ name: 'Everkeep Backup', extensions: ['everkeep-backup'] }], properties: ['openFile' as const] }
+      const result = parent ? await dialog.showOpenDialog(parent, options) : await dialog.showOpenDialog(options)
+      return ok(result.canceled ? null : result.filePaths[0] ?? null)
+    } catch (error) { return fromError(error) }
+  })
 
   ipcMain.handle(IpcChannels.app.ping, async () => ok({ message: 'pong' }))
 
@@ -190,9 +215,9 @@ export function registerIpcHandlers(): void {
     try {
       const parent = getParentWindow()
       const options = {
-        title: 'Open Everkeep Vault',
+        title: 'Open an Everkeep vault or backup',
         defaultPath: getDefaultVaultDirectory(),
-        filters: [VAULT_FILE_FILTER],
+        filters: [{ name: 'Everkeep vaults and backups', extensions: ['everkeep', 'everkeep-backup'] }, VAULT_FILE_FILTER, { name: 'Everkeep backups', extensions: ['everkeep-backup'] }],
         properties: ['openFile' as const]
       }
       const result = parent
@@ -522,12 +547,6 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IpcChannels.vault.exportReport, async (_event, raw) => {
     try {
-      if (!getLicenseService().isLicensed()) {
-        return fail(
-          'LICENSE_REQUIRED',
-          'Exporting a report requires an Everkeep license. Activate yours in Settings → License.'
-        )
-      }
       return ok(service.exportReport(ExportReportSchema.parse(raw)))
     } catch (error) {
       return fromError(error)
@@ -635,31 +654,34 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(IpcChannels.license.activate, async (_event, raw) => {
+  ipcMain.handle(IpcChannels.license.activateKey, async (_event, raw) => {
     try {
-      const { key } = ActivateLicenseSchema.parse(raw)
-      return ok(getLicenseService().activate(key))
+      const { key } = ActivateLicenseKeySchema.parse(raw)
+      return ok(getLicenseService().activateKey(key))
     } catch (error) {
-      if (error instanceof LicenseError) {
-        return fail(error.code, error.message)
-      }
+      return fromError(error)
+    }
+  })
+
+  ipcMain.handle(IpcChannels.license.activateFile, async () => {
+    try {
+      return ok(await getLicenseService().pickAndActivateFile())
+    } catch (error) {
       return fromError(error)
     }
   })
 
   ipcMain.handle(IpcChannels.license.deactivate, async () => {
     try {
-      getLicenseService().deactivate()
-      return ok({ deactivated: true })
+      return ok(getLicenseService().deactivate())
     } catch (error) {
       return fromError(error)
     }
   })
 
-  ipcMain.handle(IpcChannels.license.openPurchasePage, async () => {
+  ipcMain.handle(IpcChannels.license.openCheckout, async () => {
     try {
-      await shell.openExternal(PURCHASE_URL)
-      return ok({ opened: true })
+      return ok(await getLicenseService().openCheckout())
     } catch (error) {
       return fromError(error)
     }
@@ -667,6 +689,7 @@ export function registerIpcHandlers(): void {
 }
 
 export function shutdownVaultService(): void {
+  stopSharing?.()
   if (vaultService) {
     vaultService.closeVault()
     vaultService = null

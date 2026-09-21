@@ -9,6 +9,7 @@ export interface DashboardAction {
 }
 
 export interface DashboardSummary {
+  topicCounts: Record<string, number>
   overallPercent: number
   peopleCount: number
   contactsCount: number

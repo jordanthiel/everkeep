@@ -3,15 +3,22 @@
   "include": [
     "src/renderer/**/*",
     "src/shared/**/*",
-    "src/preload/index.d.ts"
+    "src/preload/index.d.ts",
+    "src/sharing/**/*",
+    "sharing/main.tsx",
+    "supabase/functions/_shared/sharing/schema.ts"
   ],
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@renderer/*": ["src/renderer/*"],
-      "@shared/*": ["src/shared/*"]
+      "@renderer/*": [
+        "src/renderer/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ]
     },
     "strict": true,
     "noImplicitAny": true,
@@ -23,6 +30,10 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ]
   }
 }

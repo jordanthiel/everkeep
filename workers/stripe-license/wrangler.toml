@@ -1,0 +1,12 @@
+name = "everkeep-stripe-license"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+
+[[kv_namespaces]]
+binding = "LICENSES"
+id = "00000000000000000000000000000000"
+preview_id = "00000000000000000000000000000000"
+
+[vars]
+FROM_EMAIL = "licenses@everkeep.app"
+PRODUCT_NAME = "Everkeep Lifetime"

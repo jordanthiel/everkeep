@@ -1,82 +1,119 @@
-import { mkdtempSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { describe, expect, it } from 'vitest'
-import {
-  generateLicenseKeypair,
-  mintLicenseKey,
-  verifyLicenseKey,
-  LicenseVerificationError
-} from '../src/main/license'
+import { afterEach, describe, expect, it } from 'vitest'
+import { LICENSE_PUBLIC_KEY } from '../src/shared/constants'
+import { signLicense, verifyLicense, LicenseCryptoError } from '../src/shared/license/crypto'
 import { LicenseService } from '../src/main/services/LicenseService'
-import { LICENSE_PRODUCT_ID } from '../src/shared/types/license'
+import {
+  TEST_LICENSE_PRIVATE_KEY,
+  TEST_LICENSE_PUBLIC_KEY
+} from './fixtures/license-keys'
 
-function makeKeypair() {
-  return generateLicenseKeypair()
-}
+describe('license crypto', () => {
+  it('uses the committed development public key by default', () => {
+    expect(LICENSE_PUBLIC_KEY).toBe(TEST_LICENSE_PUBLIC_KEY)
+  })
 
-function mintFor(email: string, privateKeyPem: string) {
-  return mintLicenseKey(
-    { v: 1, product: LICENSE_PRODUCT_ID, email, iat: Math.floor(Date.now() / 1000) },
-    privateKeyPem
-  )
-}
+  it('signs and verifies a lifetime license', () => {
+    const key = signLicense(
+      {
+        v: 1,
+        email: 'buyer@example.com',
+        product: 'lifetime',
+        seats: 1,
+        issuedAt: '2026-09-02T12:00:00.000Z',
+        orderId: 'cs_test_123'
+      },
+      TEST_LICENSE_PRIVATE_KEY
+    )
 
-describe('license key round-trip', () => {
-  it('mints a key that verifies against the matching public key', () => {
-    const { publicKeyB64, privateKeyPem } = makeKeypair()
-    const key = mintFor('buyer@example.com', privateKeyPem)
-    expect(key.startsWith('EK1.')).toBe(true)
-    const payload = verifyLicenseKey(key, publicKeyB64)
-    expect(payload.email).toBe('buyer@example.com')
-    expect(payload.product).toBe(LICENSE_PRODUCT_ID)
+    const claims = verifyLicense(key, TEST_LICENSE_PUBLIC_KEY)
+    expect(claims.email).toBe('buyer@example.com')
+    expect(claims.product).toBe('lifetime')
+    expect(claims.orderId).toBe('cs_test_123')
   })
 
   it('rejects a tampered payload', () => {
-    const { publicKeyB64, privateKeyPem } = makeKeypair()
-    const key = mintFor('buyer@example.com', privateKeyPem)
-    const [prefix, , sigB64] = key.split('.')
-    const tampered = Buffer.from(
-      JSON.stringify({ v: 1, product: LICENSE_PRODUCT_ID, email: 'mallory@example.com', iat: 1 })
+    const key = signLicense(
+      {
+        v: 1,
+        email: 'buyer@example.com',
+        product: 'lifetime',
+        seats: 1,
+        issuedAt: '2026-09-02T12:00:00.000Z',
+        orderId: 'cs_test_123'
+      },
+      TEST_LICENSE_PRIVATE_KEY
     )
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '')
-    expect(() => verifyLicenseKey(`${prefix}.${tampered}.${sigB64}`, publicKeyB64)).toThrow(
-      LicenseVerificationError
-    )
+    const parts = key.split('.')
+    const payload = Buffer.from(parts[1], 'base64url')
+    payload[0] = payload[0]! ^ 0xff
+    const tampered = `${parts[0]}.${Buffer.from(payload).toString('base64url')}.${parts[2]}`
+
+    expect(() => verifyLicense(tampered, TEST_LICENSE_PUBLIC_KEY)).toThrow(LicenseCryptoError)
   })
 
-  it('rejects a key signed by a different keypair', () => {
-    const a = makeKeypair()
-    const b = makeKeypair()
-    const key = mintFor('buyer@example.com', a.privateKeyPem)
-    expect(() => verifyLicenseKey(key, b.publicKeyB64)).toThrow(LicenseVerificationError)
-  })
-
-  it('rejects malformed keys', () => {
-    const { publicKeyB64 } = makeKeypair()
-    for (const bad of ['', 'hello', 'EK1.only-two', 'XX1.a.b']) {
-      expect(() => verifyLicenseKey(bad, publicKeyB64)).toThrow(LicenseVerificationError)
-    }
+  it('rejects signatures from the wrong key', () => {
+    const key = signLicense(
+      {
+        v: 1,
+        email: 'buyer@example.com',
+        product: 'lifetime',
+        seats: 1,
+        issuedAt: '2026-09-02T12:00:00.000Z',
+        orderId: 'cs_test_123'
+      },
+      TEST_LICENSE_PRIVATE_KEY
+    )
+    const otherPublic = Buffer.alloc(32, 7).toString('base64url')
+    expect(() => verifyLicense(key, otherPublic)).toThrow(LicenseCryptoError)
   })
 })
 
 describe('LicenseService', () => {
-  it('starts as trial, activates, persists, and deactivates', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'everkeep-license-'))
-    const service = new LicenseService(dir)
-    expect(service.getStatus()).toEqual({ state: 'trial' })
-    expect(service.isLicensed()).toBe(false)
+  const dirs: string[] = []
 
-    // NOTE: LicenseService verifies against the embedded placeholder public key,
-    // so activation with a real minted key is covered by the round-trip tests above
-    // once the real key is embedded. Here we assert the trial fallback on garbage.
-    expect(() => service.activate('not-a-key')).toThrow()
-    expect(service.getStatus()).toEqual({ state: 'trial' })
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 
-    service.deactivate() // no-op when nothing stored
-    expect(service.isLicensed()).toBe(false)
+  it('activates, reports lifetime, and deactivates', () => {
+    const root = mkdtempSync(join(tmpdir(), 'everkeep-license-'))
+    dirs.push(root)
+    const licensePath = join(root, 'license.ekey')
+    const service = new LicenseService({
+      licensePath,
+      publicKey: TEST_LICENSE_PUBLIC_KEY
+    })
+
+    expect(service.getStatus().entitlement).toBe('free')
+    expect(service.isPaid()).toBe(false)
+
+    const key = signLicense(
+      {
+        v: 1,
+        email: 'owner@example.com',
+        product: 'lifetime',
+        seats: 1,
+        issuedAt: '2026-09-02T12:00:00.000Z',
+        orderId: 'cs_test_activate'
+      },
+      TEST_LICENSE_PRIVATE_KEY
+    )
+
+    const activated = service.activateKey(key)
+    expect(activated.entitlement).toBe('lifetime')
+    expect(activated.email).toBe('owner@example.com')
+    expect(service.isPaid()).toBe(true)
+
+    writeFileSync(join(root, 'from-file.ekey'), key, 'utf8')
+    service.deactivate()
+    expect(service.isPaid()).toBe(false)
+
+    const fromFile = service.activateFile(join(root, 'from-file.ekey'))
+    expect(fromFile.entitlement).toBe('lifetime')
   })
 })

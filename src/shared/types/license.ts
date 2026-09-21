@@ -1,18 +1,24 @@
-export const LICENSE_PRODUCT_ID = 'everkeep-household'
+export type LicenseProduct = 'lifetime' | 'family'
 
-export interface LicensePayload {
+export type LicenseEntitlement = 'free' | 'lifetime' | 'family'
+
+export interface LicenseClaims {
   v: 1
-  product: typeof LICENSE_PRODUCT_ID
-  /** Purchaser email the key was issued to. */
   email: string
-  /** Issued-at, unix seconds. */
-  iat: number
+  product: LicenseProduct
+  seats: number
+  issuedAt: string
+  orderId: string
 }
 
-export type LicenseState =
-  | { state: 'trial' }
-  | { state: 'licensed'; email: string; activatedAt: string }
-
-export interface ActivateLicenseInput {
-  key: string
+export interface LicenseStatus {
+  entitlement: LicenseEntitlement
+  activated: boolean
+  email: string | null
+  seats: number | null
+  issuedAt: string | null
+  orderId: string | null
+  entryCap: number | null
+  attachmentCap: number | null
+  lifetimePriceUsd: number
 }

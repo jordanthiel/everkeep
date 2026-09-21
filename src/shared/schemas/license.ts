@@ -1,5 +1,9 @@
 import { z } from 'zod'
 
-export const ActivateLicenseSchema = z.object({
-  key: z.string().min(1).max(500)
+export const ActivateLicenseKeySchema = z.object({
+  key: z.string().min(1)
+})
+
+export const ActivateLicenseFileSchema = z.object({
+  filePath: z.string().min(1)
 })

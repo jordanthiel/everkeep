@@ -16,8 +16,9 @@ export const AUTOSAVE_DEBOUNCE_MS = 500
 
 export const NAV_SECTIONS = [
   { id: 'home', label: 'Home', path: '/' },
-  { id: 'people', label: 'People', path: '/people' },
-  { id: 'contacts', label: 'Important Contacts', path: '/contacts' },
+  { id: 'people', label: 'Contacts', path: '/people' },
+  { id: 'dependents', label: 'Children, Dependents & Pets', path: '/dependents' },
+  { id: 'debts', label: 'Bills & Debts', path: '/debts' },
   { id: 'identity', label: 'Identity', path: '/identity' },
   { id: 'legal', label: 'Legal & Estate', path: '/legal' },
   { id: 'financial', label: 'Financial', path: '/financial' },
@@ -43,8 +44,27 @@ export const NAV_FOOTER = [
 export const LEGAL_DISCLAIMER =
   'Everkeep helps you organize and communicate information. It does not create a will, trust, power of attorney, beneficiary designation, or other legally binding estate-planning document and does not provide legal, tax, or financial advice.'
 
+/** Freemium caps for unpaid installs. */
+export const FREE_ENTRY_CAP = 15
+export const FREE_ATTACHMENT_CAP = 5
+
+/** One-time Lifetime price shown in-app (actual charge is set on the Stripe Payment Link). */
+export const LIFETIME_PRICE_USD = 79
+
 /**
- * Where the in-app "Buy Everkeep" button points. Update once the marketing
- * site is deployed; the pricing section lives at /#pricing.
+ * Stripe Payment Link for Everkeep Lifetime.
+ * Override with STRIPE_PAYMENT_LINK_URL at build/runtime for production.
  */
-export const PURCHASE_URL = 'https://everkeep.app/#pricing'
+export const STRIPE_PAYMENT_LINK_URL =
+  (typeof process !== 'undefined' && process.env?.STRIPE_PAYMENT_LINK_URL?.trim()) ||
+  'https://buy.stripe.com/test_everkeep_lifetime'
+
+export const LICENSE_FILENAME = 'license.ekey'
+
+/**
+ * Ed25519 public key (base64url) used to verify license.ekey offline.
+ * Default is the committed development keypair; set LICENSE_PUBLIC_KEY for production.
+ */
+export const LICENSE_PUBLIC_KEY =
+  (typeof process !== 'undefined' && process.env?.LICENSE_PUBLIC_KEY?.trim()) ||
+  'AUngg7JkqeUea4pBQ8-KWHo8f_LQepmGibMSHaF2jkc'

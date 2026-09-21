@@ -1,3 +1,4 @@
+import { RecordLoginSchema } from './recordLogin'
 import { z } from 'zod'
 
 export const AccountTypeSchema = z.enum([
@@ -30,6 +31,7 @@ const BeneficiaryInputSchema = z.object({
 })
 
 export const CreateAccountSchema = z.object({
+  login: RecordLoginSchema.nullable().optional(),
   institution: z.string().min(1).max(200),
   accountName: z.string().max(200).nullable().optional(),
   accountType: AccountTypeSchema,
@@ -45,6 +47,7 @@ export const CreateAccountSchema = z.object({
 })
 
 export const UpdateAccountSchema = z.object({
+  login: RecordLoginSchema.nullable().optional(),
   id: z.string().uuid(),
   institution: z.string().min(1).max(200).optional(),
   accountName: z.string().max(200).nullable().optional(),

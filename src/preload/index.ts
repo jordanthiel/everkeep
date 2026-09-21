@@ -1,3 +1,4 @@
+import type { PacketDraft } from '../shared/types/packet'
 import { contextBridge, ipcRenderer } from 'electron'
 import type { EverkeepApi } from '../shared/types/ipc'
 import { IpcChannels } from '../shared/types/ipc'
@@ -17,9 +18,44 @@ import type {
   UpdateVaultEntryInput,
   VaultSectionId
 } from '../shared/types/entry'
+import type { HandoffInput } from '../shared/types/handoff'
+import type { ExportOptions } from '../shared/types/entry'
 import type { AppUpdateStatus } from '../shared/types/appUpdate'
 
 const api: EverkeepApi = {
+  sharing: {
+    status: () => ipcRenderer.invoke('sharing:status'),
+    requestCode: (email) => ipcRenderer.invoke('sharing:requestCode', email),
+    verifyCode: (challengeId, email, code) => ipcRenderer.invoke('sharing:verifyCode', { challengeId, email, code }),
+    logout: () => ipcRenderer.invoke('sharing:logout'),
+    list: () => ipcRenderer.invoke('sharing:list'),
+    get: (id) => ipcRenderer.invoke('sharing:get', id),
+    accept: (id) => ipcRenderer.invoke('sharing:accept', id),
+    edit: (id, recordId, input) => ipcRenderer.invoke('sharing:edit', { id, recordId, input }),
+    members: (id) => ipcRenderer.invoke('sharing:members', id),
+    invite: (id, input) => ipcRenderer.invoke('sharing:invite', { id, input }),
+    grant: (id, input) => ipcRenderer.invoke('sharing:grant', { id, input }),
+    revoke: (id, email) => ipcRenderer.invoke('sharing:revoke', { id, email }),
+    attachment: (id, recordId, attachmentId) => ipcRenderer.invoke('sharing:attachment', { id, recordId, attachmentId }),
+    publish: () => ipcRenderer.invoke('sharing:publish'),
+    snapshot: () => ipcRenderer.invoke('sharing:snapshot'),
+    sync: (resolution) => ipcRenderer.invoke('sharing:sync', resolution),
+    conflicts: () => ipcRenderer.invoke('sharing:conflicts'),
+    setEditing: (value) => ipcRenderer.invoke('sharing:setEditing', value),
+    reveal: () => ipcRenderer.invoke('sharing:reveal'),
+    saveCopy: () => ipcRenderer.invoke('sharing:saveCopy'),
+    getOpenRequest: () => ipcRenderer.invoke('sharing:openRequest'),
+    onOpenRequest: (listener) => { ipcRenderer.on('sharing:open', listener); return () => ipcRenderer.removeListener('sharing:open', listener) }
+  },
+  files: {
+    getBackupOpenRequest: () => ipcRenderer.invoke(IpcChannels.app.getBackupOpenRequest),
+    dismissBackupOpenRequest: (path) => ipcRenderer.invoke(IpcChannels.app.dismissBackupOpenRequest, path),
+    onBackupOpenRequest: (listener) => {
+      const wrapped = () => listener()
+      ipcRenderer.on(IpcChannels.app.backupOpenRequested, wrapped)
+      return () => ipcRenderer.removeListener(IpcChannels.app.backupOpenRequested, wrapped)
+    }
+  },
   ping: () => ipcRenderer.invoke(IpcChannels.app.ping),
   getVersion: () => ipcRenderer.invoke(IpcChannels.app.getVersion),
   updates: {
@@ -37,6 +73,16 @@ const api: EverkeepApi = {
     }
   },
   vault: {
+    getPacketDraft: () => ipcRenderer.invoke(IpcChannels.vault.getPacketDraft),
+    savePacketDraft: (input: PacketDraft, vaultId: string) => ipcRenderer.invoke(IpcChannels.vault.savePacketDraft, { draft: input, vaultId }),
+    clearPacketDraft: () => ipcRenderer.invoke(IpcChannels.vault.clearPacketDraft),
+    getHandoff: () => ipcRenderer.invoke(IpcChannels.vault.getHandoff),
+    updateHandoff: (input: HandoffInput) => ipcRenderer.invoke(IpcChannels.vault.updateHandoff, input),
+    getExportCatalog: () => ipcRenderer.invoke(IpcChannels.vault.getExportCatalog),
+    previewReport: (input: ExportOptions) => ipcRenderer.invoke(IpcChannels.vault.previewReport, input),
+    verifyBackup: (input) => ipcRenderer.invoke(IpcChannels.vault.verifyBackup, input),
+    restoreBackup: (input) => ipcRenderer.invoke(IpcChannels.vault.restoreBackup, input),
+    pickRestorePath: () => ipcRenderer.invoke(IpcChannels.vault.pickRestorePath),
     create: (input: CreateVaultInput) => ipcRenderer.invoke(IpcChannels.vault.create, input),
     open: (input: OpenVaultInput) => ipcRenderer.invoke(IpcChannels.vault.open, input),
     close: () => ipcRenderer.invoke(IpcChannels.vault.close),
@@ -111,9 +157,10 @@ const api: EverkeepApi = {
   },
   license: {
     getStatus: () => ipcRenderer.invoke(IpcChannels.license.getStatus),
-    activate: (key: string) => ipcRenderer.invoke(IpcChannels.license.activate, { key }),
+    activateKey: (key: string) => ipcRenderer.invoke(IpcChannels.license.activateKey, { key }),
+    activateFile: () => ipcRenderer.invoke(IpcChannels.license.activateFile),
     deactivate: () => ipcRenderer.invoke(IpcChannels.license.deactivate),
-    openPurchasePage: () => ipcRenderer.invoke(IpcChannels.license.openPurchasePage)
+    openCheckout: () => ipcRenderer.invoke(IpcChannels.license.openCheckout)
   }
 }
 

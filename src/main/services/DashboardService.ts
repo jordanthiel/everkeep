@@ -6,10 +6,10 @@ export class DashboardService {
 
   getSummary(): DashboardSummary {
     const peopleCount = this.count('people')
-    const contactsCount = this.count('contacts')
+    const contactsCount = peopleCount
     const accountsCount = this.count('accounts')
     const hasExecutor = this.hasRole('executor')
-    const hasAttorney = this.hasContactRole('estate_attorney')
+    const hasAttorney = this.hasRole('attorney')
     const hasPasswordManagerHint =
       this.hasDigitalCategory('password_manager') || this.hasEntryKind('digital', 'password_manager')
     const hasWill = this.hasEntryKind('legal', 'will')
@@ -20,9 +20,9 @@ export class DashboardService {
       {
         id: 'add-people',
         title: 'Add the people who matter',
-        description: 'Yourself, spouse/partner, children, and anyone who would handle affairs. Add each person once.',
+        description: 'Yourself, family, professionals, and anyone named in a section. Add each person once.',
         path: '/people',
-        cta: 'Add people',
+        cta: 'Add contacts',
         priority: 1
       },
       {
@@ -37,8 +37,8 @@ export class DashboardService {
         id: 'add-attorney',
         title: 'Add your estate attorney',
         description: 'A trusted professional contact your family can call quickly.',
-        path: '/contacts',
-        cta: 'Add contact',
+        path: '/people',
+        cta: 'Add attorney',
         priority: 3
       },
       {
@@ -100,17 +100,25 @@ export class DashboardService {
     const overallPercent = Math.round((completed / actions.length) * 100)
 
     const importantPeople = [
-      { role: 'Spouse / Partner', name: this.personNameByRelationship('spouse') },
+      {
+        role: 'Spouse / Partner',
+        name:
+          this.personNameByRelationship('spouse') ?? this.personNameByRelationship('partner')
+      },
       { role: 'Executor', name: this.personNameByRole('executor') },
       { role: 'Trustee', name: this.personNameByRole('trustee') },
       { role: 'Power of Attorney', name: this.personNameByRole('power_of_attorney') },
-      { role: 'Attorney', name: this.contactNameByRole('estate_attorney') },
-      { role: 'Financial Advisor', name: this.contactNameByRole('financial_advisor') }
+      { role: 'Attorney', name: this.personNameByRole('attorney') },
+      { role: 'Financial Advisor', name: this.personNameByRole('advisor') }
     ]
 
     const recentlyUpdated = this.recentUpdates()
 
+    const topicCounts: Record<string, number> = { people: peopleCount, financial: accountsCount }
+    const rows = this.db.prepare('SELECT section, COUNT(*) AS count FROM vault_entries WHERE archived_at IS NULL GROUP BY section').all() as Array<{ section: string; count: number }>
+    for (const row of rows) topicCounts[row.section] = row.count
     return {
+      topicCounts,
       overallPercent,
       peopleCount,
       contactsCount,
@@ -137,15 +145,6 @@ export class DashboardService {
          FROM person_roles r
          JOIN people p ON p.id = r.person_id
          WHERE r.role = ? AND p.archived_at IS NULL`
-      )
-      .get(role) as { count: number }
-    return row.count > 0
-  }
-
-  private hasContactRole(role: string): boolean {
-    const row = this.db
-      .prepare(
-        `SELECT COUNT(*) AS count FROM contacts WHERE role = ? AND archived_at IS NULL`
       )
       .get(role) as { count: number }
     return row.count > 0
@@ -217,17 +216,6 @@ export class DashboardService {
     return row?.full_name ?? null
   }
 
-  private contactNameByRole(role: string): string | null {
-    const row = this.db
-      .prepare(
-        `SELECT name FROM contacts
-         WHERE role = ? AND archived_at IS NULL
-         ORDER BY updated_at DESC LIMIT 1`
-      )
-      .get(role) as { name: string } | undefined
-    return row?.name ?? null
-  }
-
   private recentUpdates(): DashboardSummary['recentlyUpdated'] {
     const people = this.db
       .prepare(
@@ -241,14 +229,6 @@ export class DashboardService {
       .prepare(
         `SELECT COALESCE(account_name, institution) AS title, updated_at AS updatedAt
          FROM accounts WHERE archived_at IS NULL
-         ORDER BY updated_at DESC LIMIT 3`
-      )
-      .all() as Array<{ title: string; updatedAt: string }>
-
-    const contacts = this.db
-      .prepare(
-        `SELECT name AS title, updated_at AS updatedAt
-         FROM contacts WHERE archived_at IS NULL
          ORDER BY updated_at DESC LIMIT 3`
       )
       .all() as Array<{ title: string; updatedAt: string }>
@@ -267,18 +247,12 @@ export class DashboardService {
     }
 
     return [
-      ...people.map((p) => ({ entity: 'People', title: p.title, updatedAt: p.updatedAt, path: '/people' })),
+      ...people.map((p) => ({ entity: 'Contacts', title: p.title, updatedAt: p.updatedAt, path: '/people' })),
       ...accounts.map((a) => ({
         entity: 'Financial',
         title: a.title,
         updatedAt: a.updatedAt,
         path: '/financial'
-      })),
-      ...contacts.map((c) => ({
-        entity: 'Contacts',
-        title: c.title,
-        updatedAt: c.updatedAt,
-        path: '/contacts'
       })),
       ...entries.map((e) => ({
         entity: e.section,

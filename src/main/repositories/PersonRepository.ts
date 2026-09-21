@@ -17,6 +17,8 @@ interface PersonRow {
   phone: string | null
   email: string | null
   address: string | null
+  company: string | null
+  website: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -50,8 +52,8 @@ export class PersonRepository {
         .prepare(
           `INSERT INTO people (
             id, full_name, relationship, date_of_birth, phone, email, address, notes,
-            created_at, updated_at, last_reviewed_at, archived_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+            company, website, created_at, updated_at, last_reviewed_at, archived_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
         )
         .run(
           id,
@@ -62,6 +64,8 @@ export class PersonRepository {
           input.email ?? null,
           input.address ?? null,
           input.notes ?? null,
+          input.company ?? null,
+          input.website ?? null,
           now,
           now,
           now
@@ -99,6 +103,8 @@ export class PersonRepository {
             phone = ?,
             email = ?,
             address = ?,
+            company = ?,
+            website = ?,
             notes = ?,
             last_reviewed_at = ?,
             updated_at = ?
@@ -111,6 +117,8 @@ export class PersonRepository {
           input.phone !== undefined ? input.phone : existing.phone,
           input.email !== undefined ? input.email : existing.email,
           input.address !== undefined ? input.address : existing.address,
+          input.company !== undefined ? input.company : existing.company,
+          input.website !== undefined ? input.website : existing.website,
           input.notes !== undefined ? input.notes : existing.notes,
           input.lastReviewedAt !== undefined ? input.lastReviewedAt : existing.lastReviewedAt,
           now,
@@ -183,6 +191,8 @@ export class PersonRepository {
       phone: row.phone,
       email: row.email,
       address: row.address,
+      company: row.company,
+      website: row.website,
       notes: row.notes,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

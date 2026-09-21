@@ -1,4 +1,6 @@
-import { app, BrowserWindow } from 'electron'
+import { BackupOpenRequests } from './files/BackupOpenRequests'
+import { IpcChannels } from '../shared/types/ipc'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { registerIpcHandlers, shutdownVaultService } from './ipc/handlers'
 import { createMainWindow } from './window'
 import { getUpdateService } from './services/UpdateService'
@@ -12,6 +14,7 @@ if (process.platform === 'win32') {
 }
 
 function bootstrap(): void {
+  if (app.isPackaged) app.setAsDefaultProtocolClient('everkeep')
   registerIpcHandlers()
   createMainWindow()
   getUpdateService().start()
@@ -23,9 +26,43 @@ function bootstrap(): void {
   })
 }
 
-app.whenReady().then(() => {
-  bootstrap()
+let sharingRequest: string | null = null
+function receiveSharingLink(value: string) {
+  const match = value.match(/^everkeep:\/\/shared\/([a-f0-9-]{36})\/?$/)
+  if (!match) return
+  sharingRequest = match[1]
+  if (app.isReady()) { const window = BrowserWindow.getAllWindows()[0] ?? createMainWindow(); window.show(); window.focus(); window.webContents.send('sharing:open') }
+}
+app.on('open-url', (event, url) => { event.preventDefault(); receiveSharingLink(url) })
+ipcMain.handle('sharing:openRequest', () => { const id = sharingRequest; sharingRequest = null; return id })
+const requests = new BackupOpenRequests()
+function notifyBackupRequest() {
+  if (!app.isReady()) return
+  const window = BrowserWindow.getAllWindows()[0] ?? createMainWindow()
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+  window.webContents.send(IpcChannels.app.backupOpenRequested)
+}
+app.on('open-file', (event, path) => {
+  event.preventDefault()
+  if (requests.add(path)) notifyBackupRequest()
 })
+
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  process.argv.forEach(receiveSharingLink)
+  requests.addArguments(process.argv.slice(app.isPackaged ? 1 : 2), process.cwd())
+  app.on('second-instance', (_event, argv, cwd) => {
+    argv.forEach(receiveSharingLink)
+    requests.addArguments(argv.slice(app.isPackaged ? 1 : 2), cwd)
+    notifyBackupRequest()
+  })
+  ipcMain.handle(IpcChannels.app.getBackupOpenRequest, () => requests.get())
+  ipcMain.handle(IpcChannels.app.dismissBackupOpenRequest, (_event, path) => { if (typeof path === 'string') requests.dismiss(path) })
+  app.whenReady().then(bootstrap)
+}
 
 app.on('window-all-closed', () => {
   shutdownVaultService()

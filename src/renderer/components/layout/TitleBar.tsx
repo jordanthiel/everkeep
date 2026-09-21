@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useVaultStore } from '@renderer/state/vaultStore'
 import { cn } from '@renderer/lib/utils'
 
@@ -10,7 +11,8 @@ export function TitleBar() {
       <div className="app-no-drag pl-16 text-sm text-warm-500">
         {session ? session.metadata.name : 'Everkeep'}
       </div>
-      <div className="app-no-drag text-xs text-warm-500">
+      <div className="app-no-drag flex items-center gap-4 text-xs text-warm-500">
+        <Link to="/settings" className="rounded underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-forest-500">Settings</Link>
         <span
           className={cn(
             'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1',

@@ -3,10 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { Check, ArrowRight } from 'lucide-react'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
 import { Button } from '@renderer/components/ui/Button'
+import { useJourneyProgress } from '@renderer/hooks/useJourneyProgress'
+import { JOURNEY_STEPS } from '@shared/sections/journey'
+import { JourneyOverview } from '@renderer/components/layout/Journey'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 
 export function ReviewPage() {
   const navigate = useNavigate()
+  const { statuses } = useJourneyProgress()
+  const unfinished = JOURNEY_STEPS.filter(step => !['reviewed', 'not-applicable'].includes(statuses[step.id]))
   const queryClient = useQueryClient()
 
   const reviewQuery = useQuery({
@@ -45,12 +50,19 @@ export function ReviewPage() {
       description="Open a record to edit details that have changed — for example a renewed passport. Use Still accurate only when nothing needs updating."
       badge="Yearly habit"
     >
+      <div className="mb-6 rounded-xl border border-warm-200 p-5">
+        <h2 className="font-display text-2xl">Check what needs attention</h2>
+        <p className="my-3 text-sm text-warm-500">Check records needing review and unfinished topics. You can still prepare a packet before everything is complete.</p>
+        <Button onClick={() => navigate('/export')}>Continue to share your vault <ArrowRight className="h-4 w-4" /></Button>
+      </div>
+      <h2 className="mb-4 mt-8 font-display text-2xl">Records to check</h2>
       <div className="mb-6 rounded-xl border border-warm-200 bg-ivory-50/80 px-5 py-4 text-sm text-warm-500">
-        {items.length === 0
-          ? 'Everything recently reviewed looks current. Nice work.'
+        {reviewQuery.isPending ? 'Loading records…' : reviewQuery.isError ? 'Unable to load records. Please try again.' : items.length === 0
+          ? 'No records currently need a date-based review. Check skipped topics above for anything still to add.'
           : `${items.length} item${items.length === 1 ? '' : 's'} haven’t been reviewed in over a year (or ever).`}
       </div>
 
+      {reviewQuery.isError && <Button variant="secondary" onClick={() => void reviewQuery.refetch()}>Try again</Button>}
       <div className="space-y-3">
         {items.map((item) => (
           <article
@@ -83,6 +95,8 @@ export function ReviewPage() {
           </article>
         ))}
       </div>
+      {unfinished.length > 0 && <section className="my-8"><h2 className="mb-4 font-display text-2xl">Topics to finish or revisit</h2><div className="flex flex-wrap gap-3">{unfinished.map(step => <Button key={step.id} variant="secondary" onClick={() => navigate(step.path)}>{step.title}</Button>)}</div></section>}
+      <details className="mt-8"><summary className="mb-4 cursor-pointer text-sm text-forest-700">Browse all sections</summary><JourneyOverview reviewing /></details>
     </SectionPage>
   )
 }

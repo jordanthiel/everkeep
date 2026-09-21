@@ -17,22 +17,31 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
     "rebuild:node": "npm rebuild better-sqlite3",
-    "rebuild:electron": "electron-builder install-app-deps",
-    "test": "npm run rebuild:node && vitest run && npm run rebuild:electron",
+    "rebuild:electron": "electron-rebuild --force --which-module better-sqlite3",
+    "test": "npm run rebuild:node && vitest run && npm run rebuild:electron && node scripts/test-electron.mjs",
     "test:watch": "npm run rebuild:node && vitest",
-    "postinstall": "electron-builder install-app-deps",
+    "postinstall": "npm run rebuild:electron",
     "icons": "node scripts/generate-icons.mjs",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win --x64",
     "website:dev": "npm --prefix website run dev",
     "website:build": "npm --prefix website run build",
-    "website:preview": "npm --prefix website run preview"
+    "website:preview": "npm --prefix website run preview",
+    "test:packet": "npm run build && node scripts/test-packet.mjs",
+    "test:record-pages": "npm run build && node scripts/test-record-pages.mjs",
+    "test:electron": "npm run rebuild:electron && node scripts/test-electron.mjs",
+    "sharing:build": "vite build --config sharing/vite.config.ts",
+    "sharing:dev": "supabase functions serve sharing --env-file supabase/.env.local",
+    "test:sharing": "npm run build && npm run sharing:build && node scripts/test-sharing.mjs",
+    "test:sharing:postgres": "node scripts/test-sharing-postgres.mjs",
+    "test:sharing:supabase": "node scripts/supabase-local-smoke.mjs"
   },
   "dependencies": {
+    "@noble/ed25519": "^2.3.0",
     "@noble/hashes": "^2.3.0",
     "@tanstack/react-query": "^5.66.0",
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "12.4.1",
     "clsx": "^2.1.1",
     "electron-updater": "^6.8.9",
     "jszip": "^3.10.1",
@@ -47,6 +56,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
+    "@electron/rebuild": "3.6.1",
     "@eslint/js": "^9.19.0",
     "@resvg/resvg-js": "^2.6.2",
     "@types/better-sqlite3": "^7.6.12",
@@ -62,11 +72,13 @@
     "electron": "^34.0.2",
     "electron-builder": "^25.1.8",
     "electron-vite": "^3.0.0",
+    "esbuild": "0.25.12",
     "eslint": "^9.19.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.18",
     "png2icons": "^2.0.1",
     "postcss": "^8.5.1",
+    "postgres": "^3.4.7",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
     "vite": "^6.0.11",
@@ -133,6 +145,23 @@
       "provider": "github",
       "owner": "jordanthiel",
       "repo": "everkeep"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "everkeep-backup",
+        "name": "Everkeep Backup",
+        "description": "Everkeep vault backup",
+        "role": "Viewer",
+        "rank": "Owner"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "Everkeep shared vault",
+        "schemes": [
+          "everkeep"
+        ]
+      }
+    ]
   }
 }

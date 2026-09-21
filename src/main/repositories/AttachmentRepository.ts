@@ -83,13 +83,20 @@ export class AttachmentRepository {
     return result.changes > 0
   }
 
-  listAllActive(): Array<Attachment & { storagePath: string }> {
+  listAllActive(): Array<Attachment & { storagePath: string; checksum: string | null }> {
     const rows = this.db
       .prepare(
         `SELECT * FROM attachments WHERE archived_at IS NULL ORDER BY created_at ASC`
       )
       .all() as AttachmentRow[]
-    return rows.map((row) => ({ ...this.map(row), storagePath: row.storage_path }))
+    return rows.map((row) => ({ ...this.map(row), storagePath: row.storage_path, checksum: row.checksum }))
+  }
+
+  countActive(): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM attachments WHERE archived_at IS NULL')
+      .get() as { count: number }
+    return row.count
   }
 
   private map(row: AttachmentRow): Attachment {

@@ -1,96 +1,141 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
-import { join } from 'path'
-import type { LicenseState } from '../../shared/types/license'
-import { LicenseVerificationError, verifyLicenseKey } from '../license'
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'fs'
+import { dialog, shell } from 'electron'
+import {
+  FREE_ATTACHMENT_CAP,
+  FREE_ENTRY_CAP,
+  LICENSE_FILENAME,
+  LICENSE_PUBLIC_KEY,
+  LIFETIME_PRICE_USD,
+  STRIPE_PAYMENT_LINK_URL
+} from '../../shared/constants'
+import { LicenseCryptoError, verifyLicense } from '../../shared/license/crypto'
+import type { LicenseClaims, LicenseEntitlement, LicenseStatus } from '../../shared/types/license'
+import { getLicensePath } from '../files/paths'
 
-const LICENSE_FILE_NAME = 'license.json'
-
-interface StoredLicense {
-  key: string
-  email: string
-  activatedAt: string
-}
-
-export class LicenseError extends Error {
+export class LicenseServiceError extends Error {
   constructor(
-    readonly code: string,
-    message: string
+    message: string,
+    readonly code: string
   ) {
     super(message)
-    this.name = 'LicenseError'
+    this.name = 'LicenseServiceError'
   }
 }
 
-/**
- * Machine-level license store. The license is per computer (per household),
- * not per vault: it lives next to the app's userData, never inside a vault.
- */
+export interface LicenseServiceOptions {
+  licensePath?: string
+  publicKey?: string
+  checkoutUrl?: string
+}
+
 export class LicenseService {
-  private readonly filePath: string
+  private claims: LicenseClaims | null = null
+  private readonly licensePath: string
+  private readonly publicKey: string
+  private readonly checkoutUrl: string
 
-  constructor(userDataDir: string) {
-    mkdirSync(userDataDir, { recursive: true })
-    this.filePath = join(userDataDir, LICENSE_FILE_NAME)
+  constructor(options: LicenseServiceOptions = {}) {
+    this.licensePath = options.licensePath ?? getLicensePath()
+    this.publicKey = options.publicKey ?? LICENSE_PUBLIC_KEY
+    this.checkoutUrl = options.checkoutUrl ?? STRIPE_PAYMENT_LINK_URL
+    this.reload()
   }
 
-  getStatus(): LicenseState {
-    const stored = this.readStored()
-    if (!stored) return { state: 'trial' }
-    // Re-verify on every read so a tampered file falls back to trial.
+  reload(): LicenseStatus {
+    if (!existsSync(this.licensePath)) {
+      this.claims = null
+      return this.getStatus()
+    }
+
     try {
-      verifyLicenseKey(stored.key)
+      const raw = readFileSync(this.licensePath, 'utf8')
+      this.claims = verifyLicense(raw, this.publicKey)
     } catch {
-      return { state: 'trial' }
+      this.claims = null
     }
-    return { state: 'licensed', email: stored.email, activatedAt: stored.activatedAt }
+    return this.getStatus()
   }
 
-  isLicensed(): boolean {
-    return this.getStatus().state === 'licensed'
+  getStatus(): LicenseStatus {
+    const entitlement = this.getEntitlement()
+    const paid = entitlement !== 'free'
+    return {
+      entitlement,
+      activated: paid,
+      email: this.claims?.email ?? null,
+      seats: this.claims?.seats ?? null,
+      issuedAt: this.claims?.issuedAt ?? null,
+      orderId: this.claims?.orderId ?? null,
+      entryCap: paid ? null : FREE_ENTRY_CAP,
+      attachmentCap: paid ? null : FREE_ATTACHMENT_CAP,
+      lifetimePriceUsd: LIFETIME_PRICE_USD
+    }
   }
 
-  activate(rawKey: string): LicenseState {
-    const key = rawKey.trim()
-    if (!key) {
-      throw new LicenseError('EMPTY_KEY', 'Enter a license key to activate Everkeep.')
-    }
-    let payload
+  getEntitlement(): LicenseEntitlement {
+    if (!this.claims) return 'free'
+    if (this.claims.product === 'family') return 'family'
+    return 'lifetime'
+  }
+
+  isPaid(): boolean {
+    return this.getEntitlement() !== 'free'
+  }
+
+  activateKey(key: string): LicenseStatus {
+    let claims: LicenseClaims
     try {
-      payload = verifyLicenseKey(key)
+      claims = verifyLicense(key, this.publicKey)
     } catch (error) {
-      const message =
-        error instanceof LicenseVerificationError
-          ? error.message
-          : 'That license key could not be verified.'
-      throw new LicenseError('INVALID_KEY', message)
-    }
-    const stored: StoredLicense = {
-      key,
-      email: payload.email,
-      activatedAt: new Date().toISOString()
-    }
-    writeFileSync(this.filePath, JSON.stringify(stored, null, 2), 'utf8')
-    return { state: 'licensed', email: stored.email, activatedAt: stored.activatedAt }
-  }
-
-  deactivate(): void {
-    if (existsSync(this.filePath)) {
-      unlinkSync(this.filePath)
-    }
-  }
-
-  private readStored(): StoredLicense | null {
-    if (!existsSync(this.filePath)) return null
-    try {
-      const parsed = JSON.parse(readFileSync(this.filePath, 'utf8')) as Partial<StoredLicense>
-      if (typeof parsed.key !== 'string' || typeof parsed.email !== 'string') return null
-      return {
-        key: parsed.key,
-        email: parsed.email,
-        activatedAt: typeof parsed.activatedAt === 'string' ? parsed.activatedAt : new Date(0).toISOString()
+      if (error instanceof LicenseCryptoError) {
+        throw new LicenseServiceError(error.message, error.code)
       }
-    } catch {
-      return null
+      throw new LicenseServiceError(
+        "That file doesn't match Everkeep's publisher key.",
+        'INVALID_LICENSE'
+      )
     }
+
+    writeFileSync(this.licensePath, key.trim(), 'utf8')
+    this.claims = claims
+    return this.getStatus()
+  }
+
+  activateFile(filePath: string): LicenseStatus {
+    if (!existsSync(filePath)) {
+      throw new LicenseServiceError('License file was not found.', 'FILE_NOT_FOUND')
+    }
+    const raw = readFileSync(filePath, 'utf8')
+    return this.activateKey(raw)
+  }
+
+  async pickAndActivateFile(): Promise<LicenseStatus | null> {
+    const result = await dialog.showOpenDialog({
+      title: 'Activate Everkeep license',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Everkeep License', extensions: ['ekey', 'txt'] },
+        { name: 'All files', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    return this.activateFile(result.filePaths[0])
+  }
+
+  deactivate(): LicenseStatus {
+    if (existsSync(this.licensePath)) {
+      unlinkSync(this.licensePath)
+    }
+    this.claims = null
+    return this.getStatus()
+  }
+
+  async openCheckout(): Promise<{ opened: boolean }> {
+    await shell.openExternal(this.checkoutUrl)
+    return { opened: true }
+  }
+
+  getLicenseFileName(): string {
+    return LICENSE_FILENAME
   }
 }

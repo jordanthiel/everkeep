@@ -29,6 +29,8 @@ npm test
 npm run build
 ```
 
+`npm test` runs the unit tests, rebuilds SQLite for Electron, then checks encrypted vault saves, attachments, password changes, and backup restoration in a real Electron main process. Run `npm run test:electron` for that runtime check alone. It uses temporary test vaults and must not run with `ELECTRON_RUN_AS_NODE` enabled.
+
 ## Package
 
 ```bash
@@ -67,27 +69,6 @@ cd website && npm install && npm run dev
 ```
 
 Configure download URLs with `website/.env` (see `website/.env.example`).
-
-## Pricing & licensing
-
-Everkeep is **$79 one-time per household** (no subscription). The free trial
-covers everything except exporting HTML reports; export requires a license.
-
-- **Website pricing section:** `website/src/components/PricingSection.tsx`, driven by
-  `website/src/config/pricing.ts`. Set `VITE_STRIPE_PAYMENT_LINK` in `website/.env`
-  to your Stripe Payment Link (test or live). With no link configured, the buy
-  button shows "opening soon" instead.
-- **License keys** are Ed25519-signed and verified fully offline in the app
-  (`src/main/license.ts`, `src/main/services/LicenseService.ts`). Keys look like
-  `EK1.<payload>.<signature>` and are stored per machine in Electron `userData`.
-- **Minting keys:** run `node scripts/mint-license.mjs --init` once to create a
-  signing keypair (private key goes to `~/.everkeep-licensing/`, never committed),
-  paste the printed public key into `EVERKEEP_LICENSE_PUBLIC_KEY_B64` in
-  `src/main/license.ts`, then `node scripts/mint-license.mjs --email <customer>`
-  to mint a key after each Stripe payment. Keys are activated in-app under
-  Settings → License.
-- **In-app purchase link:** `PURCHASE_URL` in `src/shared/constants/index.ts`
-  (update once the marketing site is deployed).
 
 ## Architecture
 

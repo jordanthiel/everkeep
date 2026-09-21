@@ -1,3 +1,5 @@
+import type { DesktopSharingApi } from '../sharing'
+import type { PacketDraft } from './packet'
 import type {
   BackupVaultInput,
   CreateVaultInput,
@@ -20,12 +22,24 @@ import type {
   VaultEntry,
   VaultSectionId
 } from './entry'
+import type { FamilyHandoff, HandoffInput, BackupCheck } from './handoff'
+import type { ExportCatalog, ExportOptions } from './entry'
 import type { Attachment } from './attachment'
 import type { AppUpdateStatus } from './appUpdate'
-import type { LicenseState } from './license'
+import type { LicenseStatus } from './license'
 
 export const IpcChannels = {
   vault: {
+    getPacketDraft: 'vault:getPacketDraft',
+    savePacketDraft: 'vault:savePacketDraft',
+    clearPacketDraft: 'vault:clearPacketDraft',
+    getHandoff: 'vault:getHandoff',
+    updateHandoff: 'vault:updateHandoff',
+    getExportCatalog: 'vault:getExportCatalog',
+    previewReport: 'vault:previewReport',
+    verifyBackup: 'vault:verifyBackup',
+    restoreBackup: 'vault:restoreBackup',
+    pickRestorePath: 'vault:pickRestorePath',
     create: 'vault:create',
     open: 'vault:open',
     close: 'vault:close',
@@ -91,6 +105,9 @@ export const IpcChannels = {
     remove: 'attachments:remove'
   },
   app: {
+    backupOpenRequested: 'app:backupOpenRequested',
+    getBackupOpenRequest: 'app:getBackupOpenRequest',
+    dismissBackupOpenRequest: 'app:dismissBackupOpenRequest',
     ping: 'app:ping',
     getVersion: 'app:getVersion',
     updateStatus: 'app:updateStatus',
@@ -102,9 +119,10 @@ export const IpcChannels = {
   },
   license: {
     getStatus: 'license:getStatus',
-    activate: 'license:activate',
+    activateKey: 'license:activateKey',
+    activateFile: 'license:activateFile',
     deactivate: 'license:deactivate',
-    openPurchasePage: 'license:openPurchasePage'
+    openCheckout: 'license:openCheckout'
   }
 } as const
 
@@ -113,6 +131,12 @@ export type IpcResult<T> =
   | { ok: false; error: { code: string; message: string } }
 
 export interface EverkeepApi {
+  sharing: DesktopSharingApi
+  files: {
+    getBackupOpenRequest: () => Promise<string | null>
+    dismissBackupOpenRequest: (path: string) => Promise<void>
+    onBackupOpenRequest: (listener: () => void) => () => void
+  }
   ping: () => Promise<IpcResult<{ message: string }>>
   getVersion: () => Promise<IpcResult<{ version: string }>>
   updates: {
@@ -123,13 +147,17 @@ export interface EverkeepApi {
     openReleasePage: () => Promise<IpcResult<{ opened: boolean }>>
     onStatus: (listener: (status: AppUpdateStatus) => void) => () => void
   }
-  license: {
-    getStatus: () => Promise<IpcResult<LicenseState>>
-    activate: (key: string) => Promise<IpcResult<LicenseState>>
-    deactivate: () => Promise<IpcResult<{ deactivated: boolean }>>
-    openPurchasePage: () => Promise<IpcResult<{ opened: boolean }>>
-  }
   vault: {
+    getPacketDraft: () => Promise<IpcResult<PacketDraft | null>>
+    savePacketDraft: (input: PacketDraft, vaultId: string) => Promise<IpcResult<PacketDraft>>
+    clearPacketDraft: () => Promise<IpcResult<{ cleared: boolean }>>
+    getHandoff: () => Promise<IpcResult<FamilyHandoff>>
+    updateHandoff: (input: HandoffInput) => Promise<IpcResult<FamilyHandoff>>
+    getExportCatalog: () => Promise<IpcResult<ExportCatalog>>
+    previewReport: (input: ExportOptions) => Promise<IpcResult<{ html: string; token: string }>>
+    verifyBackup: (input: { backupPath: string; password?: string }) => Promise<IpcResult<BackupCheck>>
+    restoreBackup: (input: { backupPath: string; destinationPath: string; password?: string }) => Promise<IpcResult<VaultSession>>
+    pickRestorePath: () => Promise<IpcResult<string | null>>
     create: (input: CreateVaultInput) => Promise<IpcResult<VaultSession>>
     open: (input: OpenVaultInput) => Promise<IpcResult<VaultSession>>
     close: () => Promise<IpcResult<{ closed: boolean }>>
@@ -193,5 +221,12 @@ export interface EverkeepApi {
     open: (id: string) => Promise<IpcResult<{ opened: boolean }>>
     reveal: (id: string) => Promise<IpcResult<{ revealed: boolean }>>
     remove: (id: string) => Promise<IpcResult<{ removed: boolean }>>
+  }
+  license: {
+    getStatus: () => Promise<IpcResult<LicenseStatus>>
+    activateKey: (key: string) => Promise<IpcResult<LicenseStatus>>
+    activateFile: () => Promise<IpcResult<LicenseStatus | null>>
+    deactivate: () => Promise<IpcResult<LicenseStatus>>
+    openCheckout: () => Promise<IpcResult<{ opened: boolean }>>
   }
 }

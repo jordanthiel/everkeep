@@ -1,3 +1,4 @@
+import type { RecordLoginInput } from './recordLogin'
 import type { BaseEntity } from './base'
 
 export type AccountType =
@@ -34,6 +35,7 @@ export interface BeneficiaryDesignation {
 }
 
 export interface Account extends BaseEntity {
+  login?: RecordLoginInput | null
   institution: string
   accountName: string | null
   accountType: AccountType
@@ -48,6 +50,7 @@ export interface Account extends BaseEntity {
 }
 
 export interface CreateAccountInput {
+  login?: RecordLoginInput | null
   institution: string
   accountName?: string | null
   accountType: AccountType
@@ -69,6 +72,7 @@ export interface CreateAccountInput {
 }
 
 export interface UpdateAccountInput {
+  login?: RecordLoginInput | null
   id: string
   institution?: string
   accountName?: string | null
