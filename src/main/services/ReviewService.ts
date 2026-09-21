@@ -39,33 +39,8 @@ export class ReviewService {
         id: row.id,
         entity: 'people',
         title: row.title,
-        section: 'People',
+        section: 'Contacts',
         path: '/people',
-        lastReviewedAt: row.last_reviewed_at,
-        updatedAt: row.updated_at,
-        staleDays: staleDays(row.last_reviewed_at)
-      })
-    }
-
-    const contacts = this.db
-      .prepare(
-        `SELECT id, name AS title, last_reviewed_at, updated_at
-         FROM contacts WHERE archived_at IS NULL`
-      )
-      .all() as Array<{
-      id: string
-      title: string
-      last_reviewed_at: string | null
-      updated_at: string
-    }>
-    for (const row of contacts) {
-      if (!isStale(row.last_reviewed_at)) continue
-      items.push({
-        id: row.id,
-        entity: 'contacts',
-        title: row.title,
-        section: 'Important Contacts',
-        path: '/contacts',
         lastReviewedAt: row.last_reviewed_at,
         updatedAt: row.updated_at,
         staleDays: staleDays(row.last_reviewed_at)

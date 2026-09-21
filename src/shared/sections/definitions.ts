@@ -1,4 +1,5 @@
 import type { VaultSectionId } from '../types/entry'
+import type { PersonRole } from '../types/person'
 
 export type SectionFieldType =
   | 'text'
@@ -20,6 +21,10 @@ export interface SectionFieldDef {
   sensitive?: boolean
   /** When set, the field is shown only for these record kinds. */
   forKinds?: string[]
+  /** When this person is chosen, add this assignment on their contact. */
+  assignRole?: PersonRole
+  /** Store more than one contact id, comma-separated. */
+  multi?: boolean
 }
 
 export interface SectionDefinition {
@@ -44,10 +49,46 @@ export interface SectionDefinition {
 
 export const SECTION_DEFINITIONS: SectionDefinition[] = [
   {
+    id: 'dependents', title: 'Children, Dependents & Pets', path: '/dependents',
+    description: 'Practical care instructions for anyone who depends on you.', addLabel: 'Add care profile',
+    kindLabel: 'Who needs care?', kinds: [{ value: 'child', label: 'Child' }, { value: 'adult', label: 'Dependent adult' }, { value: 'pet', label: 'Pet' }],
+    titleLabel: 'Name', titlePlaceholder: 'Name of the person or pet', showNotes: true,
+    fields: [
+      { key: 'caregiver', label: 'Primary caregiver', type: 'person' },
+      { key: 'backupCaregiver', label: 'Backup caregiver', type: 'person' },
+      { key: 'routine', label: 'Daily routine and immediate needs', type: 'textarea' },
+      { key: 'school', label: 'School / daycare and pickup instructions', type: 'textarea', forKinds: ['child'] },
+      { key: 'careNeeds', label: 'Care needs, medications, and allergies', type: 'textarea' },
+      { key: 'accessibility', label: 'Communication and accessibility needs', type: 'textarea', forKinds: ['child', 'adult'] },
+      { key: 'veterinarian', label: 'Veterinarian and phone', type: 'text', forKinds: ['pet'] },
+      { key: 'microchip', label: 'Microchip and registration location', type: 'text', forKinds: ['pet'] },
+      { key: 'supplies', label: 'Food, supplies, and important belongings', type: 'textarea' },
+      { key: 'legalDocuments', label: 'Relevant care or guardianship documents — location', type: 'text', forKinds: ['child', 'adult'] }
+    ], disclaimer: 'These are care instructions. Naming a caregiver here does not establish legal guardianship or authority.'
+  },
+  {
+    id: 'debts', title: 'Bills & Debts', path: '/debts', description: 'Identify obligations, payment arrangements, and the right contact for questions.', addLabel: 'Add bill or debt',
+    kinds: [{ value: 'mortgage', label: 'Mortgage' }, { value: 'credit_card', label: 'Credit card' }, { value: 'loan', label: 'Loan' }, { value: 'bill', label: 'Recurring bill' }, { value: 'other', label: 'Other obligation' }],
+    titlePlaceholder: 'e.g. Home mortgage', showNotes: true,
+    fields: [
+      { key: 'creditor', label: 'Lender / provider', type: 'text', required: true },
+      { key: 'borrower', label: 'Borrower / account holder', type: 'person', multi: true },
+      { key: 'cosigner', label: 'Co-signer', type: 'person', multi: true },
+      { key: 'authorizedUser', label: 'Authorized user (not an owner)', type: 'person', multi: true, forKinds: ['credit_card'] },
+      { key: 'reference', label: 'Last four digits / reference', type: 'text' },
+      { key: 'dueDate', label: 'Due date or day of month', type: 'text' },
+      { key: 'amount', label: 'Usual payment (optional)', type: 'text' },
+      { key: 'paymentSource', label: 'Autopay source / payment instructions', type: 'text' },
+      { key: 'linkedAsset', label: 'Related property or vehicle', type: 'text', forKinds: ['mortgage', 'loan'] },
+      { key: 'contact', label: 'Provider contact details', type: 'textarea' },
+      { key: 'action', label: 'Instructions for the person helping', type: 'select', options: [{ value: '', label: 'Choose…' }, { value: 'keep', label: 'Keep running for household continuity' }, { value: 'ask', label: 'Ask the adviser / provider first' }, { value: 'cancel', label: 'Consider cancellation after review' }] }
+    ], disclaimer: 'Listing a debt does not determine who legally owes it. A surviving relative is not automatically personally liable. Check with the relevant professional before paying or closing accounts.'
+  },
+  {
     id: 'identity',
     title: 'Identity',
     description:
-      'Legal names and IDs. Add people first, then attach each document to someone so you never retype a name.',
+      'IDs are stored on each contact. This page groups passports, Social Security numbers, and licenses by person.',
     path: '/identity',
     addLabel: 'Save',
     kindLabel: 'Record type',
@@ -66,7 +107,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     showLocation: true,
     showNotes: true,
     fields: [
-      { key: 'personId', label: 'Belongs to', type: 'person' },
+      { key: 'personId', label: 'Belongs to', type: 'person', required: true },
       {
         key: 'fullLegalName',
         label: 'Full legal name',
@@ -143,9 +184,14 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
         ]
       },
       { key: 'dateSigned', label: 'Date signed / created', type: 'date' },
-      { key: 'attorney', label: 'Attorney', type: 'text' },
-      { key: 'executorOrAgent', label: 'Executor / agent / trustee', type: 'text' },
-      { key: 'alternate', label: 'Alternate', type: 'text' },
+      { key: 'attorney', label: 'Attorney', type: 'person', assignRole: 'attorney' },
+      {
+        key: 'executorOrAgent',
+        label: 'Executor / agent / trustee',
+        type: 'person',
+        assignRole: 'executor'
+      },
+      { key: 'alternate', label: 'Alternate', type: 'person' },
       { key: 'copyLocation', label: 'Copy location', type: 'text' },
       { key: 'taxId', label: 'Tax ID (if relevant)', type: 'sensitive', sensitive: true }
     ],
@@ -178,9 +224,9 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     fields: [
       { key: 'carrier', label: 'Carrier', type: 'text', required: true },
       { key: 'policyNumber', label: 'Policy number', type: 'text' },
-      { key: 'insured', label: 'Insured', type: 'text' },
-      { key: 'owner', label: 'Policy owner', type: 'text' },
-      { key: 'agent', label: 'Agent', type: 'text' },
+      { key: 'insured', label: 'Insured', type: 'person' },
+      { key: 'owner', label: 'Policy owner', type: 'person' },
+      { key: 'agent', label: 'Agent', type: 'person', assignRole: 'insurance_agent' },
       { key: 'coverageAmount', label: 'Coverage amount', type: 'text' },
       {
         key: 'termOrPermanent',
@@ -193,7 +239,13 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
           { value: 'other', label: 'Other / N/A' }
         ]
       },
-      { key: 'beneficiaries', label: 'Beneficiaries', type: 'textarea' },
+      {
+        key: 'beneficiaries',
+        label: 'Beneficiaries',
+        type: 'person',
+        multi: true,
+        assignRole: 'beneficiary'
+      },
       { key: 'premium', label: 'Premium', type: 'text' },
       { key: 'paymentSource', label: 'Payment source', type: 'text' }
     ]
@@ -220,10 +272,10 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
       { key: 'address', label: 'Address / description', type: 'textarea' },
       { key: 'ownership', label: 'Ownership', type: 'text' },
       { key: 'purchaseDate', label: 'Purchase date', type: 'date' },
-      { key: 'year', label: 'Year (vehicles)', type: 'text' },
-      { key: 'make', label: 'Make', type: 'text' },
-      { key: 'model', label: 'Model', type: 'text' },
-      { key: 'vin', label: 'VIN / hull ID', type: 'text' },
+      { key: 'year', label: 'Year (vehicles)', type: 'text', forKinds: ['vehicle', 'boat', 'rv', 'aircraft'] },
+      { key: 'make', label: 'Make', type: 'text', forKinds: ['vehicle', 'boat', 'rv', 'aircraft'] },
+      { key: 'model', label: 'Model', type: 'text', forKinds: ['vehicle', 'boat', 'rv', 'aircraft'] },
+      { key: 'vin', label: 'VIN / hull ID', type: 'text', forKinds: ['vehicle', 'boat', 'rv', 'aircraft'] },
       { key: 'mortgageOrLoan', label: 'Mortgage / loan', type: 'text' },
       { key: 'insurance', label: 'Insurance', type: 'text' },
       { key: 'titleLocation', label: 'Title / deed location', type: 'text' },
@@ -254,7 +306,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     fields: [
       { key: 'employerOrSource', label: 'Employer / source', type: 'text' },
       { key: 'position', label: 'Position', type: 'text' },
-      { key: 'hrContact', label: 'HR / contact', type: 'text' },
+      { key: 'hrContact', label: 'HR / contact', type: 'person', assignRole: 'employer_hr' },
       { key: 'employeeId', label: 'Employee ID', type: 'text' },
       { key: 'benefits', label: 'Benefits', type: 'textarea' },
       { key: 'retirementPlan', label: 'Retirement plan', type: 'text' },
@@ -283,7 +335,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     showLocation: true,
     showNotes: true,
     fields: [
-      { key: 'preparer', label: 'CPA / preparer', type: 'text' },
+      { key: 'preparer', label: 'CPA / preparer', type: 'person', assignRole: 'cpa' },
       { key: 'filingStatus', label: 'Filing status', type: 'text' },
       { key: 'yearsCovered', label: 'Years covered', type: 'text' },
       { key: 'portalOrAccount', label: 'Portal / account notes', type: 'textarea' }
@@ -313,10 +365,15 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     showLocation: true,
     showNotes: true,
     fields: [
-      { key: 'provider', label: 'Provider / name', type: 'text' },
+      { key: 'provider', label: 'Provider / name', type: 'person', assignRole: 'doctor' },
       { key: 'phone', label: 'Phone', type: 'text' },
       { key: 'details', label: 'Details', type: 'textarea' },
-      { key: 'proxyAgent', label: 'Proxy / agent', type: 'text' }
+      {
+        key: 'proxyAgent',
+        label: 'Proxy / agent',
+        type: 'person',
+        assignRole: 'healthcare_proxy'
+      }
     ]
   },
   {
@@ -329,6 +386,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     kindLabel: 'Category',
     kinds: [
       { value: 'password_manager', label: 'Password manager' },
+      { value: 'login', label: 'Provider login' },
       { value: 'email', label: 'Email' },
       { value: 'apple_google_microsoft', label: 'Apple / Google / Microsoft' },
       { value: 'social', label: 'Social media' },
@@ -343,8 +401,13 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     fields: [
       { key: 'provider', label: 'Provider', type: 'text' },
       { key: 'accountIdentifier', label: 'Username / email', type: 'text' },
+      { key: 'password', label: 'Password (optional; requires vault protection)', type: 'text', sensitive: true },
       { key: 'url', label: 'URL', type: 'text' },
       { key: 'instructions', label: 'Access / recovery instructions', type: 'textarea' },
+      { key: 'legacySetup', label: 'Legacy / emergency access setup', type: 'select', options: [{ value: '', label: 'Not checked' }, { value: 'configured', label: 'Configured with the provider' }, { value: 'todo', label: 'Need to set up' }, { value: 'unavailable', label: 'Provider does not offer it' }] },
+      { key: 'legacyContact', label: 'Chosen legacy / emergency contact', type: 'person' },
+      { key: 'recoveryLocation', label: 'Access key or recovery-material location', type: 'text' },
+      { key: 'verifiedDate', label: 'Last verified with the provider', type: 'date' },
       { key: 'preference', label: 'Memorialize / delete preference', type: 'text' },
       {
         key: 'seedWarning',
@@ -353,7 +416,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
       }
     ],
     disclaimer:
-      'Do not store every password or an unencrypted seed phrase here. Document how an authorized person gains access.'
+      'Logins added while filling out other sections appear here too. Passwords require vault password protection. Use recovery instructions to explain how an authorized person gains access; never store a wallet seed phrase here.'
   },
   {
     id: 'household',
@@ -419,7 +482,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
       { key: 'description', label: 'Description', type: 'textarea' },
       { key: 'approximateValue', label: 'Approximate value', type: 'text' },
       { key: 'serialNumber', label: 'Serial number', type: 'text' },
-      { key: 'intendedRecipient', label: 'Intended recipient', type: 'text' },
+      { key: 'intendedRecipient', label: 'Intended recipient', type: 'person' },
       { key: 'appraisalOrReceipt', label: 'Appraisal / receipt location', type: 'text' }
     ],
     disclaimer:
@@ -458,7 +521,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
           { value: 'other', label: 'Other' }
         ]
       },
-      { key: 'funeralHome', label: 'Funeral home', type: 'text' },
+      { key: 'funeralHome', label: 'Funeral home', type: 'person', assignRole: 'funeral_home' },
       { key: 'cemetery', label: 'Cemetery / plot', type: 'text' },
       { key: 'servicePreferences', label: 'Service preferences', type: 'textarea' },
       { key: 'musicReadings', label: 'Music / readings', type: 'textarea' },
@@ -486,7 +549,7 @@ export const SECTION_DEFINITIONS: SectionDefinition[] = [
     titlePlaceholder: 'e.g. Letter to executor',
     showNotes: true,
     fields: [
-      { key: 'recipient', label: 'Recipient', type: 'text' },
+      { key: 'recipient', label: 'Recipient', type: 'person' },
       { key: 'body', label: 'Letter body', type: 'textarea', required: true },
       { key: 'date', label: 'Date', type: 'date' },
       {

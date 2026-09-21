@@ -11,6 +11,9 @@ export function SiteHeader() {
           <a href="#capabilities" className="hidden transition hover:text-forest-700 sm:inline">
             What you can do
           </a>
+          <a href="#pricing" className="hidden transition hover:text-forest-700 sm:inline">
+            Pricing
+          </a>
           <a href="#privacy" className="hidden transition hover:text-forest-700 sm:inline">
             Privacy
           </a>

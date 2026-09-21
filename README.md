@@ -29,6 +29,8 @@ npm test
 npm run build
 ```
 
+`npm test` runs the unit tests, rebuilds SQLite for Electron, then checks encrypted vault saves, attachments, password changes, and backup restoration in a real Electron main process. Run `npm run test:electron` for that runtime check alone. It uses temporary test vaults and must not run with `ELECTRON_RUN_AS_NODE` enabled.
+
 ## Package
 
 ```bash

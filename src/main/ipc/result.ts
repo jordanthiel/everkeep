@@ -1,4 +1,5 @@
 import type { IpcResult } from '../../shared/types/ipc'
+import { LicenseServiceError } from '../services/LicenseService'
 import { VaultServiceError } from '../services/VaultService'
 
 export function ok<T>(data: T): IpcResult<T> {
@@ -11,6 +12,10 @@ export function fail(code: string, message: string): IpcResult<never> {
 
 export function fromError(error: unknown): IpcResult<never> {
   if (error instanceof VaultServiceError) {
+    return fail(error.code, error.message)
+  }
+
+  if (error instanceof LicenseServiceError) {
     return fail(error.code, error.message)
   }
 

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { FileUp, FolderOpen, Trash2, ExternalLink } from 'lucide-react'
+import { isFreemiumLimitError, PaywallSheet } from '@renderer/components/license/PaywallSheet'
 import { Button } from '@renderer/components/ui/Button'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
@@ -14,6 +16,8 @@ function formatBytes(size: number | null): string {
 export function EntryAttachments({ entryId }: { entryId: string }) {
   const queryClient = useQueryClient()
   const setSaveStatus = useVaultStore((s) => s.setSaveStatus)
+  const [paywallOpen, setPaywallOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const attachmentsQuery = useQuery({
     queryKey: ['attachments', entryId],
@@ -22,7 +26,10 @@ export function EntryAttachments({ entryId }: { entryId: string }) {
 
   const attachMutation = useMutation({
     mutationFn: () => unwrap(getEverkeepApi().attachments.pickAndAttach(entryId)),
-    onMutate: () => setSaveStatus('saving'),
+    onMutate: () => {
+      setError(null)
+      setSaveStatus('saving')
+    },
     onSuccess: async (attachment) => {
       if (!attachment) {
         setSaveStatus('idle')
@@ -32,7 +39,14 @@ export function EntryAttachments({ entryId }: { entryId: string }) {
       await queryClient.invalidateQueries({ queryKey: ['attachments', entryId] })
       window.setTimeout(() => setSaveStatus('idle'), 1500)
     },
-    onError: () => setSaveStatus('error')
+    onError: (err) => {
+      setSaveStatus('error')
+      if (isFreemiumLimitError(err)) {
+        setPaywallOpen(true)
+        return
+      }
+      setError(err instanceof Error ? err.message : 'Unable to attach file.')
+    }
   })
 
   return (
@@ -103,6 +117,8 @@ export function EntryAttachments({ entryId }: { entryId: string }) {
           ))}
         </ul>
       )}
+      {error && <p className="mt-2 text-sm text-red-800">{error}</p>}
+      <PaywallSheet open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </div>
   )
 }

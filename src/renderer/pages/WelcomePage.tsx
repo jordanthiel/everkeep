@@ -1,3 +1,4 @@
+import { isBackupPath, backupRestorePath } from '@shared/backupFiles'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FolderOpen, Plus } from 'lucide-react'
@@ -61,6 +62,7 @@ export function WelcomePage() {
     try {
       const path = await unwrap(getEverkeepApi().vault.pickOpenPath())
       if (!path) return
+      if (isBackupPath(path)) { navigate(backupRestorePath(path)); return }
       await openPath(path)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to open vault.')
@@ -94,7 +96,7 @@ export function WelcomePage() {
           </Button>
           <Button size="lg" variant="secondary" onClick={() => void handleOpenExisting()}>
             <FolderOpen className="h-4 w-4" />
-            Open an Existing Vault
+            Open a Vault or Backup
           </Button>
         </div>
 
@@ -171,6 +173,7 @@ export function WelcomePage() {
           </div>
         )}
 
+        <Button variant="ghost" className="mt-6" onClick={() => navigate('/restore')}>Restore an Everkeep backup</Button>
         <p className="mx-auto mt-12 max-w-lg text-center text-xs leading-relaxed text-warm-400">
           {LEGAL_DISCLAIMER}
         </p>

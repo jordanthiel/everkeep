@@ -134,7 +134,7 @@ export function CreateVaultPage() {
           <div>
             <h1 className="font-display text-3xl font-medium text-charcoal-900">About you</h1>
             <p className="mt-2 text-warm-500">
-              This starts your household in People. Use the name you go by — legal names and IDs
+              This starts your household in Contacts. Use the name you go by — legal names and IDs
               like a passport go in Identity after the vault is created, so you won’t type them twice.
             </p>
 
@@ -170,7 +170,7 @@ export function CreateVaultPage() {
                   id="spouse"
                   value={owner.spousePartner}
                   onChange={(e) => setOwner((o) => ({ ...o, spousePartner: e.target.value }))}
-                  placeholder="Optional — we’ll add them to People too"
+                  placeholder="Optional — we’ll add them to Contacts too"
                 />
               </div>
               <div className="sm:col-span-2">

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { RecentVaultsStore } from '../src/main/repositories/RecentVaultsStore'
 import { TEST_ARGON2_PARAMS } from '../src/main/security/EncryptionService'
 import { VaultService } from '../src/main/services/VaultService'
+import { groupEntriesByPerson } from '../src/shared/people'
 import {
   buildEntryTitle,
   getSectionDefinition,
@@ -73,6 +74,8 @@ describe('vault entries across sections', () => {
     expect(exported.path).toBe(reportPath)
     const html = readFileSync(reportPath, 'utf8')
     expect(html).toContain('Last Will')
+    expect(html).toContain('<h2>Contacts</h2>')
+    expect(html).not.toContain('Important Contacts')
     expect(html).not.toContain('123456789')
 
     service.archiveEntry(identity.id)
@@ -150,5 +153,32 @@ describe('identity field layout', () => {
         personName: 'Jane Smith'
       })
     ).toBe('Passport — Jane Smith')
+  })
+})
+
+describe('identity grouping', () => {
+  it('groups documents under each contact and labels self as You', () => {
+    const people = [
+      { id: 'you', fullName: 'Alex Morgan', relationship: 'self' as const },
+      { id: 'curt', fullName: 'Curt Morgan', relationship: 'spouse' as const }
+    ]
+    const groups = groupEntriesByPerson(
+      [
+        { fields: { personId: 'curt' } },
+        { fields: { personId: 'you' } },
+        { fields: { personId: 'curt' } },
+        { fields: { number: 'orphan' } }
+      ],
+      people
+    )
+
+    expect(groups.map((group) => group.personName)).toEqual([
+      'You',
+      'Curt Morgan',
+      'Not linked to a contact'
+    ])
+    expect(groups[0].entries).toHaveLength(1)
+    expect(groups[1].entries).toHaveLength(2)
+    expect(groups[2].entries).toHaveLength(1)
   })
 })

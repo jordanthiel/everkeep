@@ -53,6 +53,13 @@ export class EntryRepository {
     return rows.map((row) => this.map(row))
   }
 
+  countActive(): number {
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM vault_entries WHERE archived_at IS NULL')
+      .get() as { count: number }
+    return row.count
+  }
+
   getById(id: string): VaultEntry | null {
     const row = this.db.prepare('SELECT * FROM vault_entries WHERE id = ?').get(id) as
       | EntryRow

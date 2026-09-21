@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Check, ArrowRight } from 'lucide-react'
 import { SectionPage } from '@renderer/components/layout/SectionPage'
 import { Button } from '@renderer/components/ui/Button'
+import { JourneyOverview } from '@renderer/components/layout/Journey'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 
 export function ReviewPage() {
@@ -45,9 +46,16 @@ export function ReviewPage() {
       description="Open a record to edit details that have changed — for example a renewed passport. Use Still accurate only when nothing needs updating."
       badge="Yearly habit"
     >
+      <div className="mb-6 rounded-xl border border-warm-200 p-5">
+        <h2 className="font-display text-2xl">Review your walkthrough</h2>
+        <p className="my-3 text-sm text-warm-500">Revisit skipped topics below, check your saved records, then export a copy when you’re ready. You can return and make changes anytime.</p>
+        <Button onClick={() => navigate('/start-here')}>Continue to family handoff <ArrowRight className="h-4 w-4" /></Button>
+      </div>
+      <JourneyOverview reviewing />
+      <h2 className="mb-4 mt-8 font-display text-2xl">Records to check</h2>
       <div className="mb-6 rounded-xl border border-warm-200 bg-ivory-50/80 px-5 py-4 text-sm text-warm-500">
-        {items.length === 0
-          ? 'Everything recently reviewed looks current. Nice work.'
+        {reviewQuery.isPending ? 'Loading records…' : reviewQuery.isError ? 'Unable to load records. Please try again.' : items.length === 0
+          ? 'No records currently need a date-based review. Check skipped topics above for anything still to add.'
           : `${items.length} item${items.length === 1 ? '' : 's'} haven’t been reviewed in over a year (or ever).`}
       </div>
 

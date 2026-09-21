@@ -2,7 +2,7 @@ import { app } from 'electron'
 import { existsSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
 import { dirname, join } from 'path'
-import { DEFAULT_VAULT_DIR_NAME } from '../../shared/constants'
+import { DEFAULT_VAULT_DIR_NAME, LICENSE_FILENAME } from '../../shared/constants'
 
 export function getDefaultVaultDirectory(): string {
   const documents = app.getPath('documents')
@@ -19,6 +19,10 @@ export function getAppDataDirectory(): string {
 
 export function getRecentVaultsPath(): string {
   return join(getAppDataDirectory(), 'recent-vaults.json')
+}
+
+export function getLicensePath(): string {
+  return join(getAppDataDirectory(), LICENSE_FILENAME)
 }
 
 export function getAttachmentsDirectory(vaultId: string): string {

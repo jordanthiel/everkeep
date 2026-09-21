@@ -6,7 +6,8 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "tests/**/*"
+    "tests/**/*",
+    "scripts/electron-vault-smoke.ts"
   ],
   "compilerOptions": {
     "composite": true,

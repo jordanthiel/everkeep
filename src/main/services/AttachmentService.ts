@@ -1,5 +1,7 @@
 import {
   copyFileSync,
+  mkdtempSync,
+  rmSync,
   createReadStream,
   createWriteStream,
   existsSync,
@@ -9,6 +11,8 @@ import {
   unlinkSync,
   writeFileSync
 } from 'fs'
+import { tmpdir } from 'os'
+import { withTransaction } from '../database/connection'
 import { basename, dirname, extname, join } from 'path'
 import { createHash } from 'crypto'
 import { pipeline } from 'stream/promises'
@@ -18,6 +22,13 @@ import { v4 as uuidv4 } from 'uuid'
 import type { VaultDatabase } from '../database/connection'
 import { AttachmentRepository } from '../repositories/AttachmentRepository'
 import type { Attachment } from '../../shared/types/attachment'
+
+const openedCopies = new Set<string>()
+export function clearOpenedAttachments(): void {
+  for (const dir of openedCopies) {
+    try { rmSync(dir, { recursive: true, force: true }); openedCopies.delete(dir) } catch { /* External viewer may hold the file open. Retry on next lock. */ }
+  }
+}
 
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 
@@ -35,7 +46,8 @@ export class AttachmentService {
   constructor(
     private readonly db: VaultDatabase,
     private readonly vaultId: string,
-    private readonly attachmentsRoot: string
+    private readonly attachmentsRoot: string,
+    private readonly protectedStorage = false
   ) {}
 
   listForEntry(entryId: string): Attachment[] {
@@ -69,14 +81,14 @@ export class AttachmentService {
     const originalName = basename(sourcePath)
     const safeName = originalName.replace(/[^\w.\- ()[\]]+/g, '_')
     const dir = join(this.attachmentsRoot, attachmentId)
-    mkdirSync(dir, { recursive: true })
-    const storagePath = join(dir, safeName)
-    copyFileSync(sourcePath, storagePath)
-
-    const checksum = createHash('sha256').update(readFileSync(storagePath)).digest('hex')
+    const storagePath = this.protectedStorage ? `vault:${attachmentId}` : join(dir, safeName)
+    const content = readFileSync(sourcePath)
+    if (!this.protectedStorage) { mkdirSync(dir, { recursive: true }); copyFileSync(sourcePath, storagePath) }
+    const checksum = createHash('sha256').update(content).digest('hex')
     const mimeType = guessMime(extname(safeName))
 
-    return new AttachmentRepository(this.db).create({
+    return withTransaction(this.db, () => {
+    const attachment = new AttachmentRepository(this.db).create({
       id: attachmentId,
       entryId,
       filename: originalName,
@@ -85,6 +97,9 @@ export class AttachmentService {
       storagePath,
       checksum
     })
+    if (this.protectedStorage) this.db.prepare('INSERT INTO attachment_contents (attachment_id, content) VALUES (?, ?)').run(attachmentId, content)
+    return attachment
+    })
   }
 
   async open(id: string): Promise<{ opened: boolean }> {
@@ -92,13 +107,7 @@ export class AttachmentService {
     if (!attachment) {
       throw new AttachmentServiceError('Attachment not found.', 'NOT_FOUND')
     }
-    if (!existsSync(attachment.storagePath)) {
-      throw new AttachmentServiceError(
-        'The file is missing from local storage. Restore from a backup if you have one.',
-        'FILE_MISSING'
-      )
-    }
-    const result = await shell.openPath(attachment.storagePath)
+    const result = await shell.openPath(this.materialize(attachment))
     if (result) {
       throw new AttachmentServiceError(result, 'OPEN_FAILED')
     }
@@ -107,10 +116,10 @@ export class AttachmentService {
 
   revealInFolder(id: string): { revealed: boolean } {
     const attachment = new AttachmentRepository(this.db).getById(id)
-    if (!attachment || !existsSync(attachment.storagePath)) {
+    if (!attachment) {
       throw new AttachmentServiceError('Attachment not found.', 'NOT_FOUND')
     }
-    shell.showItemInFolder(attachment.storagePath)
+    shell.showItemInFolder(this.materialize(attachment))
     return { revealed: true }
   }
 
@@ -119,7 +128,10 @@ export class AttachmentService {
     const attachment = repo.getById(id)
     if (!attachment) return { removed: false }
 
-    repo.archive(id)
+    withTransaction(this.db, () => {
+      repo.archive(id)
+      this.db.prepare('DELETE FROM attachment_contents WHERE attachment_id = ?').run(id)
+    })
     try {
       if (existsSync(attachment.storagePath)) {
         unlinkSync(attachment.storagePath)
@@ -130,9 +142,42 @@ export class AttachmentService {
     return { removed: true }
   }
 
+  private materialize(attachment: Attachment & { storagePath: string }): string {
+    const stored = this.db.prepare('SELECT content FROM attachment_contents WHERE attachment_id = ?').get(attachment.id) as { content: Buffer } | undefined
+    if (!stored) {
+      if (!existsSync(attachment.storagePath)) throw new AttachmentServiceError('The attachment is missing. Restore it from a backup.', 'FILE_MISSING')
+      return attachment.storagePath
+    }
+    const dir = mkdtempSync(join(tmpdir(), 'everkeep-view-'))
+    openedCopies.add(dir)
+    const path = join(dir, basename(attachment.filename))
+    writeFileSync(path, stored.content, { mode: 0o600 })
+    return path
+  }
+
+  /** Stage existing attachment bytes inside the database before replacing the vault. */
+  importLocalAttachments(): string[] {
+    const oldPaths: string[] = []
+    for (const attachment of new AttachmentRepository(this.db).listAllActive()) {
+      if (this.db.prepare('SELECT 1 FROM attachment_contents WHERE attachment_id = ?').get(attachment.id)) continue
+      if (!existsSync(attachment.storagePath)) throw new AttachmentServiceError(`Missing attachment: ${attachment.filename}. Restore it before enabling full protection.`, 'FILE_MISSING')
+      const content = readFileSync(attachment.storagePath)
+      this.db.prepare('INSERT INTO attachment_contents (attachment_id, content) VALUES (?, ?)').run(attachment.id, content)
+      this.db.prepare('UPDATE attachments SET storage_path = ? WHERE id = ?').run(`vault:${attachment.id}`, attachment.id)
+      oldPaths.push(attachment.storagePath)
+    }
+    return oldPaths
+  }
+
   async writeBackupArchive(vaultFilePath: string, destinationPath: string): Promise<string> {
     const zip = new JSZip()
     zip.file('vault.everkeep', readFileSync(vaultFilePath))
+    if (this.protectedStorage) {
+      const content = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' })
+      const { atomicWrite } = await import('../security/ProtectedVaultFile')
+      atomicWrite(destinationPath, content)
+      return destinationPath
+    }
 
     const attachments = new AttachmentRepository(this.db).listAllActive()
     const attachmentManifest = attachments.map((attachment) => ({
@@ -160,8 +205,9 @@ export class AttachmentService {
     )
 
     for (const attachment of attachments) {
-      if (!existsSync(attachment.storagePath)) continue
-      const data = readFileSync(attachment.storagePath)
+      const stored = this.db.prepare('SELECT content FROM attachment_contents WHERE attachment_id = ?').get(attachment.id) as { content: Buffer } | undefined
+      if (!stored && !existsSync(attachment.storagePath)) throw new AttachmentServiceError(`Missing attachment: ${attachment.filename}. Restore it before backing up.`, 'FILE_MISSING')
+      const data = stored?.content ?? readFileSync(attachment.storagePath)
       zip.file(`attachments/${attachment.id}/${attachment.filename}`, data)
     }
 
@@ -193,6 +239,15 @@ export class AttachmentService {
     for (const attachment of attachments) {
       const entry = zip.file(`attachments/${attachment.id}/${attachment.filename}`)
       if (!entry) continue
+      if (this.protectedStorage) {
+        const content = await entry.async('nodebuffer')
+        withTransaction(this.db, () => {
+          this.db.prepare('INSERT OR REPLACE INTO attachment_contents (attachment_id, content) VALUES (?, ?)').run(attachment.id, content)
+          this.db.prepare('UPDATE attachments SET storage_path = ? WHERE id = ?').run(`vault:${attachment.id}`, attachment.id)
+        })
+        restored += 1
+        continue
+      }
       const dir = join(this.attachmentsRoot, attachment.id)
       mkdirSync(dir, { recursive: true })
       const target = join(dir, basename(attachment.storagePath))

@@ -20,11 +20,21 @@ import type {
   VaultEntry,
   VaultSectionId
 } from './entry'
+import type { FamilyHandoff, HandoffInput, BackupCheck } from './handoff'
+import type { ExportCatalog, ExportOptions } from './entry'
 import type { Attachment } from './attachment'
 import type { AppUpdateStatus } from './appUpdate'
+import type { LicenseStatus } from './license'
 
 export const IpcChannels = {
   vault: {
+    getHandoff: 'vault:getHandoff',
+    updateHandoff: 'vault:updateHandoff',
+    getExportCatalog: 'vault:getExportCatalog',
+    previewReport: 'vault:previewReport',
+    verifyBackup: 'vault:verifyBackup',
+    restoreBackup: 'vault:restoreBackup',
+    pickRestorePath: 'vault:pickRestorePath',
     create: 'vault:create',
     open: 'vault:open',
     close: 'vault:close',
@@ -90,6 +100,9 @@ export const IpcChannels = {
     remove: 'attachments:remove'
   },
   app: {
+    backupOpenRequested: 'app:backupOpenRequested',
+    getBackupOpenRequest: 'app:getBackupOpenRequest',
+    dismissBackupOpenRequest: 'app:dismissBackupOpenRequest',
     ping: 'app:ping',
     getVersion: 'app:getVersion',
     updateStatus: 'app:updateStatus',
@@ -98,6 +111,13 @@ export const IpcChannels = {
     downloadUpdate: 'app:downloadUpdate',
     installUpdate: 'app:installUpdate',
     openReleasePage: 'app:openReleasePage'
+  },
+  license: {
+    getStatus: 'license:getStatus',
+    activateKey: 'license:activateKey',
+    activateFile: 'license:activateFile',
+    deactivate: 'license:deactivate',
+    openCheckout: 'license:openCheckout'
   }
 } as const
 
@@ -106,6 +126,11 @@ export type IpcResult<T> =
   | { ok: false; error: { code: string; message: string } }
 
 export interface EverkeepApi {
+  files: {
+    getBackupOpenRequest: () => Promise<string | null>
+    dismissBackupOpenRequest: (path: string) => Promise<void>
+    onBackupOpenRequest: (listener: () => void) => () => void
+  }
   ping: () => Promise<IpcResult<{ message: string }>>
   getVersion: () => Promise<IpcResult<{ version: string }>>
   updates: {
@@ -117,6 +142,13 @@ export interface EverkeepApi {
     onStatus: (listener: (status: AppUpdateStatus) => void) => () => void
   }
   vault: {
+    getHandoff: () => Promise<IpcResult<FamilyHandoff>>
+    updateHandoff: (input: HandoffInput) => Promise<IpcResult<FamilyHandoff>>
+    getExportCatalog: () => Promise<IpcResult<ExportCatalog>>
+    previewReport: (input: ExportOptions) => Promise<IpcResult<{ html: string; token: string }>>
+    verifyBackup: (input: { backupPath: string; password?: string }) => Promise<IpcResult<BackupCheck>>
+    restoreBackup: (input: { backupPath: string; destinationPath: string; password?: string }) => Promise<IpcResult<VaultSession>>
+    pickRestorePath: () => Promise<IpcResult<string | null>>
     create: (input: CreateVaultInput) => Promise<IpcResult<VaultSession>>
     open: (input: OpenVaultInput) => Promise<IpcResult<VaultSession>>
     close: () => Promise<IpcResult<{ closed: boolean }>>
@@ -180,5 +212,12 @@ export interface EverkeepApi {
     open: (id: string) => Promise<IpcResult<{ opened: boolean }>>
     reveal: (id: string) => Promise<IpcResult<{ revealed: boolean }>>
     remove: (id: string) => Promise<IpcResult<{ removed: boolean }>>
+  }
+  license: {
+    getStatus: () => Promise<IpcResult<LicenseStatus>>
+    activateKey: (key: string) => Promise<IpcResult<LicenseStatus>>
+    activateFile: () => Promise<IpcResult<LicenseStatus | null>>
+    deactivate: () => Promise<IpcResult<LicenseStatus>>
+    openCheckout: () => Promise<IpcResult<{ opened: boolean }>>
   }
 }

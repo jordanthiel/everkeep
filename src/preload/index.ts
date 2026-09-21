@@ -17,9 +17,20 @@ import type {
   UpdateVaultEntryInput,
   VaultSectionId
 } from '../shared/types/entry'
+import type { HandoffInput } from '../shared/types/handoff'
+import type { ExportOptions } from '../shared/types/entry'
 import type { AppUpdateStatus } from '../shared/types/appUpdate'
 
 const api: EverkeepApi = {
+  files: {
+    getBackupOpenRequest: () => ipcRenderer.invoke(IpcChannels.app.getBackupOpenRequest),
+    dismissBackupOpenRequest: (path) => ipcRenderer.invoke(IpcChannels.app.dismissBackupOpenRequest, path),
+    onBackupOpenRequest: (listener) => {
+      const wrapped = () => listener()
+      ipcRenderer.on(IpcChannels.app.backupOpenRequested, wrapped)
+      return () => ipcRenderer.removeListener(IpcChannels.app.backupOpenRequested, wrapped)
+    }
+  },
   ping: () => ipcRenderer.invoke(IpcChannels.app.ping),
   getVersion: () => ipcRenderer.invoke(IpcChannels.app.getVersion),
   updates: {
@@ -37,6 +48,13 @@ const api: EverkeepApi = {
     }
   },
   vault: {
+    getHandoff: () => ipcRenderer.invoke(IpcChannels.vault.getHandoff),
+    updateHandoff: (input: HandoffInput) => ipcRenderer.invoke(IpcChannels.vault.updateHandoff, input),
+    getExportCatalog: () => ipcRenderer.invoke(IpcChannels.vault.getExportCatalog),
+    previewReport: (input: ExportOptions) => ipcRenderer.invoke(IpcChannels.vault.previewReport, input),
+    verifyBackup: (input) => ipcRenderer.invoke(IpcChannels.vault.verifyBackup, input),
+    restoreBackup: (input) => ipcRenderer.invoke(IpcChannels.vault.restoreBackup, input),
+    pickRestorePath: () => ipcRenderer.invoke(IpcChannels.vault.pickRestorePath),
     create: (input: CreateVaultInput) => ipcRenderer.invoke(IpcChannels.vault.create, input),
     open: (input: OpenVaultInput) => ipcRenderer.invoke(IpcChannels.vault.open, input),
     close: () => ipcRenderer.invoke(IpcChannels.vault.close),
@@ -108,6 +126,13 @@ const api: EverkeepApi = {
     open: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.open, { id }),
     reveal: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.reveal, { id }),
     remove: (id: string) => ipcRenderer.invoke(IpcChannels.attachments.remove, { id })
+  },
+  license: {
+    getStatus: () => ipcRenderer.invoke(IpcChannels.license.getStatus),
+    activateKey: (key: string) => ipcRenderer.invoke(IpcChannels.license.activateKey, { key }),
+    activateFile: () => ipcRenderer.invoke(IpcChannels.license.activateFile),
+    deactivate: () => ipcRenderer.invoke(IpcChannels.license.deactivate),
+    openCheckout: () => ipcRenderer.invoke(IpcChannels.license.openCheckout)
   }
 }
 

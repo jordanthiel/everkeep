@@ -1,6 +1,18 @@
 import Database from 'better-sqlite3'
 import { existsSync } from 'fs'
 
+const persistence = new WeakMap<Database.Database, () => void>()
+export function setDatabasePersistence(db: Database.Database, save?: () => void): void {
+  if (save) persistence.set(db, save)
+  else persistence.delete(db)
+}
+export function openMemoryDatabase(bytes?: Buffer): Database.Database {
+  if (bytes) { bytes = Buffer.from(bytes); bytes[18] = 1; bytes[19] = 1 }
+  const db = new Database(bytes ?? ':memory:')
+  db.pragma('foreign_keys = ON')
+  return db
+}
+
 export type VaultDatabase = Database.Database
 
 export function openDatabase(filePath: string, options?: { readonly?: boolean }): VaultDatabase {
@@ -43,6 +55,13 @@ export function verifyIntegrity(db: VaultDatabase): { ok: boolean; result: strin
 }
 
 export function withTransaction<T>(db: VaultDatabase, fn: () => T): T {
-  const run = db.transaction(fn)
+  const nested = db.inTransaction
+  const run = db.transaction(() => {
+    const result = fn()
+    // Memory-backed vaults have no disk COMMIT. Serialize only after every
+    // statement succeeds, but before committing, so an I/O failure rolls back.
+    if (!nested) persistence.get(db)?.()
+    return result
+  })
   return run()
 }

@@ -1,6 +1,9 @@
+import type { RecordLoginInput, LinkedRecord } from './recordLogin'
 import type { BaseEntity } from './base'
 
 export type VaultSectionId =
+  | 'dependents'
+  | 'debts'
   | 'identity'
   | 'legal'
   | 'insurance'
@@ -16,6 +19,8 @@ export type VaultSectionId =
   | 'documents'
 
 export interface VaultEntry extends BaseEntity {
+  linkedRecords?: LinkedRecord[]
+  login?: RecordLoginInput | null
   section: VaultSectionId
   kind: string | null
   title: string
@@ -25,6 +30,7 @@ export interface VaultEntry extends BaseEntity {
 }
 
 export interface CreateVaultEntryInput {
+  login?: RecordLoginInput | null
   section: VaultSectionId
   kind?: string | null
   title: string
@@ -35,6 +41,7 @@ export interface CreateVaultEntryInput {
 }
 
 export interface UpdateVaultEntryInput {
+  login?: RecordLoginInput | null
   id: string
   kind?: string | null
   title?: string
@@ -56,8 +63,22 @@ export interface ReviewItem {
   staleDays: number | null
 }
 
-export interface ExportReportInput {
-  destinationPath: string
+export interface ExportSelection {
+  people: string[]
+  accounts: string[]
+  entries: string[]
+}
+export interface ExportCatalogItem { id: string; title: string; section: string; private: boolean }
+export interface ExportCatalog { people: ExportCatalogItem[]; accounts: ExportCatalogItem[]; entries: ExportCatalogItem[] }
+export interface ExportOptions {
+  selection?: ExportSelection
+  includePrivateLetters?: boolean
+  includeStartHere?: boolean
+  includeAccessPlan?: boolean
+  scenario?: 'incapacity' | 'death'
+  recipient?: string
   sections?: VaultSectionId[]
   includeSensitive?: boolean
 }
+
+export interface ExportReportInput extends ExportOptions { destinationPath: string; previewToken?: string }

@@ -1,17 +1,24 @@
+import { BackupOpenNotice } from '@renderer/components/layout/BackupOpenNotice'
+import { useLocation } from 'react-router-dom'
+import { SectionHomePage } from '@renderer/pages/SectionHomePage'
+import { TopicIntroPage } from '@renderer/pages/TopicIntroPage'
+import { FinishPage } from '@renderer/pages/FinishPage'
 import { useEffect, useState } from 'react'
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { createHashRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from '@renderer/components/layout/AppShell'
 import { WelcomePage } from '@renderer/pages/WelcomePage'
 import { CreateVaultPage } from '@renderer/pages/CreateVaultPage'
 import { DashboardPage } from '@renderer/pages/DashboardPage'
 import { PeoplePage } from '@renderer/pages/PeoplePage'
-import { ContactsPage } from '@renderer/pages/ContactsPage'
 import { FinancialPage } from '@renderer/pages/FinancialPage'
 import { EntriesSectionPage } from '@renderer/pages/EntriesSectionPage'
 import { UnlockPage } from '@renderer/pages/UnlockPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
 import { ExportPage } from '@renderer/pages/ExportPage'
+import { HandoffPage } from '@renderer/pages/HandoffPage'
+import { BackupPage } from '@renderer/pages/BackupPage'
+import { RestoreVaultPage } from '@renderer/pages/RestoreVaultPage'
 import { ReviewPage } from '@renderer/pages/ReviewPage'
 import { getEverkeepApi, unwrap } from '@renderer/lib/api'
 import { useVaultStore } from '@renderer/state/vaultStore'
@@ -27,8 +34,12 @@ const queryClient = new QueryClient({
   }
 })
 
+useVaultStore.subscribe((state, previous) => {
+  if (state.session?.metadata.id !== previous.session?.metadata.id || state.session?.isLocked) queryClient.clear()
+})
+
 function SectionRoute({ id }: { id: VaultSectionId }) {
-  return <EntriesSectionPage sectionId={id} />
+  return <EntriesSectionPage key={id} sectionId={id} />
 }
 
 function VaultGate({ children }: { children: React.ReactNode }) {
@@ -68,14 +79,16 @@ function VaultGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-export default function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <HashRouter>
-        <UpdateBanner />
-        <Routes>
+function RestoreRoute() {
+  const location = useLocation()
+  return <RestoreVaultPage key={location.search} />
+}
+
+const router = createHashRouter(createRoutesFromElements(
+  <Route element={<><UpdateBanner /><BackupOpenNotice /><Outlet /></>}>
           <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/create-vault" element={<CreateVaultPage />} />
+          <Route path="/restore" element={<RestoreRoute />} />
           <Route path="/unlock" element={<UnlockPage />} />
           <Route
             element={
@@ -85,8 +98,15 @@ export default function App() {
             }
           >
             <Route path="/" element={<DashboardPage />} />
+            <Route path="/sections/:groupId" element={<SectionHomePage />} />
+            <Route path="/guide/:topicId" element={<TopicIntroPage />} />
+            <Route path="/finish" element={<FinishPage />} />
+            <Route path="/start-here" element={<HandoffPage />} />
+            <Route path="/backup" element={<BackupPage />} />
             <Route path="/people" element={<PeoplePage />} />
-            <Route path="/contacts" element={<ContactsPage />} />
+            <Route path="/contacts" element={<Navigate to="/people" replace />} />
+            <Route path="/dependents" element={<SectionRoute id="dependents" />} />
+            <Route path="/debts" element={<SectionRoute id="debts" />} />
             <Route path="/identity" element={<SectionRoute id="identity" />} />
             <Route path="/legal" element={<SectionRoute id="legal" />} />
             <Route path="/financial" element={<FinancialPage />} />
@@ -106,8 +126,9 @@ export default function App() {
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </HashRouter>
-    </QueryClientProvider>
-  )
+  </Route>
+))
+
+export default function App() {
+  return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>
 }
