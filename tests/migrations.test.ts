@@ -103,7 +103,7 @@ describe('schema migrations', () => {
 
     const result = runMigrations(db, path)
     expect(result.applied).toContain('004_unify_contacts_into_people')
-    expect(getSchemaVersion(db)).toBe(6)
+    expect(getSchemaVersion(db)).toBe(8)
 
     const people = db
       .prepare(

@@ -7,14 +7,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type Dispatch,
   type SetStateAction
 } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, FileUp, Save, X } from 'lucide-react'
-import { SectionPage } from '@renderer/components/layout/SectionPage'
+import { RecordPage } from '@renderer/components/records/RecordPage'
+import { useRecordEditor } from '@renderer/hooks/useRecordEditor'
 import { PersonPicker } from '@renderer/components/people/PersonPicker'
 import { RecordActions } from '@renderer/components/records/RecordActions'
 import { Button } from '@renderer/components/ui/Button'
@@ -58,11 +58,13 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
   const queryClient = useQueryClient()
   const protectedVault = useVaultStore(s => s.session?.metadata.isPasswordProtected)
   const setSaveStatus = useVaultStore((s) => s.setSaveStatus)
-  const formRef = useRef<HTMLDivElement>(null)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [form, setForm] = useState(() => emptyForm(sectionId))
   const content = entryFormContent(sectionId, form.kind, def.kinds?.find(kind => kind.value === form.kind)?.label)
+  const editor = useRecordEditor(form)
+  const openEditor = editor.open
+  const setRecordMessage = editor.setMessage
   const [editingId, setEditingId] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
@@ -97,7 +99,7 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
   const startEdit = useCallback(
     (entry: VaultEntry) => {
       setEditingId(entry.id)
-      setForm({
+      const initial = {
         kind: entry.kind || def.kinds?.[0]?.value || '',
         title: def.hideTitle ? '' : entry.title,
         fields: { ...entry.fields },
@@ -106,11 +108,12 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
         notes: entry.notes ?? '',
         locationText: entry.locationText ?? '',
         pendingFile: null
-      })
+      }
+      setForm(initial)
+      openEditor(initial)
       setError(null)
-      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     },
-    [def]
+    [def, openEditor]
   )
 
   useEffect(() => {
@@ -120,24 +123,21 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
     if (!personId && !kind && !editId) return
 
     if (editId) {
+      if (!entriesQuery.isSuccess) return
       const entry = entriesQuery.data?.find((item) => item.id === editId)
-      if (!entry) return
-      startEdit(entry)
+      if (entry) startEdit(entry)
+      else setRecordMessage('This record is no longer available. Choose another record or add a new one.')
       setSearchParams({}, { replace: true })
       return
     }
 
-    setForm((current) => ({
-      ...current,
-      kind: kind || current.kind,
-      fields: {
-        ...current.fields,
-        ...(personId ? { personId } : {})
-      }
-    }))
+    const initial = emptyForm(sectionId)
+    if (kind && def.kinds?.some(option => option.value === kind)) initial.kind = kind
+    if (personId) initial.fields.personId = personId
+    setForm(initial)
+    openEditor(initial)
     setSearchParams({}, { replace: true })
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [searchParams, entriesQuery.data, setSearchParams, startEdit])
+  }, [searchParams, entriesQuery.data, entriesQuery.isSuccess, setSearchParams, startEdit, sectionId, def.kinds, openEditor, setRecordMessage])
 
   function resetForm() {
     setForm(emptyForm(sectionId))
@@ -211,8 +211,6 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
       setSaveStatus('saving')
     },
     onSuccess: async (saved) => {
-      resetForm()
-      setSaveStatus('saved')
       const vaultId = useVaultStore.getState().session?.metadata.id
       const status = vaultId ? useJourneyStore.getState().vaults[vaultId]?.[sectionId] : undefined
       if (vaultId && (!status || status === 'reviewed' || status === 'not-applicable')) useJourneyStore.getState().mark(vaultId, sectionId, 'in-progress')
@@ -222,6 +220,9 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
       await queryClient.invalidateQueries({ queryKey: ['people'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       await queryClient.invalidateQueries({ queryKey: ['review'] })
+      resetForm()
+      setSaveStatus('saved')
+      editor.saved(saved.id)
       window.setTimeout(() => setSaveStatus('idle'), 1500)
     },
     onError: (err) => {
@@ -298,16 +299,26 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
 
   return (
     <>
-    <SectionPage journeyBlocked={Boolean(editingId) || JSON.stringify(form) !== JSON.stringify(emptyForm(sectionId)) || saveMutation.isPending} title={def.title} description={def.description} badge={def.badge}>
-      {sectionId === 'digital' && <p className="mb-4 text-sm text-warm-500">Use the provider’s setup tools: <a className="text-forest-700 underline" href="https://support.apple.com/en-us/102631" target="_blank" rel="noreferrer">Apple Legacy Contact</a> or <a className="text-forest-700 underline" href="https://support.google.com/accounts/answer/3036546?hl=en" target="_blank" rel="noreferrer">Google Inactive Account Manager</a>. Apple legacy access does not include Keychain passwords or passkeys.</p>}
+    <RecordPage title={def.title} description={def.description.split(/(?<=[.!?])\s/)[0]}
+      collection={TOPIC_CONTENT[sectionId].collection} noun={TOPIC_CONTENT[sectionId].noun} empty={TOPIC_CONTENT[sectionId].empty}
+      count={entriesQuery.data?.length ?? 0} loading={entriesQuery.isPending} failed={entriesQuery.isError} retry={() => void entriesQuery.refetch()}
+      editor={editor} saving={saveMutation.isPending}
+      onAdd={() => { resetForm(); openEditor(emptyForm(sectionId)) }}
+      onCancel={() => { resetForm(); editor.close() }}
+      saveAction={<div className="md:col-span-2">
+          <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+            <Save className="h-4 w-4" />
+            {saveMutation.isPending ? 'Saving…' : `Save ${content.noun}`}
+          </Button>
+          {error && <p role="alert" className="mt-2 text-sm text-red-800">{error}</p>}
+        </div>}
+      form={<>{sectionId === 'digital' && <p className="mb-4 text-sm text-warm-500">Use the provider’s setup tools: <a className="text-forest-700 underline" href="https://support.apple.com/en-us/102631" target="_blank" rel="noreferrer">Apple Legacy Contact</a> or <a className="text-forest-700 underline" href="https://support.google.com/accounts/answer/3036546?hl=en" target="_blank" rel="noreferrer">Google Inactive Account Manager</a>. Apple legacy access does not include Keychain passwords or passkeys.</p>}
       {def.disclaimer && (
         <div className="mb-6 rounded-xl border border-brass-400/30 bg-brass-400/5 px-5 py-4 text-sm text-charcoal-800">
           {def.disclaimer}
         </div>
       )}
-
       <div
-        ref={formRef}
         className={`mb-6 grid gap-4 rounded-xl border bg-ivory-50/80 p-5 md:grid-cols-2 ${
           editingId ? 'border-forest-600/40 ring-1 ring-forest-600/20' : 'border-warm-200'
         }`}
@@ -315,17 +326,13 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
         <div className="md:col-span-2 flex items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-2xl text-charcoal-900">
-              {editingId ? `Update ${content.noun}` : content.heading}
+              {editingId ? `Edit ${content.noun}` : `Add ${content.noun}`}
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-warm-500">
               {content.guidance}
             </p>
           </div>
-          {(editingId || JSON.stringify(form) !== JSON.stringify(emptyForm(sectionId))) && (
-            <Button size="sm" variant="ghost" onClick={resetForm}>
-              Cancel
-            </Button>
-          )}
+
         </div>
 
         {sectionId === 'dependents' && <fieldset className="md:col-span-2"><legend className="mb-3 text-sm font-medium">{content.kindLabel}</legend><div className="grid gap-3 sm:grid-cols-3">{def.kinds?.map(kind => <label key={kind.value} className={`flex cursor-pointer items-center gap-3 rounded-lg border p-4 text-sm ${form.kind === kind.value ? 'border-forest-600 bg-forest-700/5' : 'border-warm-200 bg-white'}`}><input type="radio" name="care-profile-kind" value={kind.value} checked={form.kind === kind.value} onChange={() => setForm(current => ({...current, kind: kind.value}))} />{kind.label}</label>)}</div></fieldset>}
@@ -484,16 +491,10 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
           </div>
         )}
 
-        <div className="md:col-span-2">
-          <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-            <Save className="h-4 w-4" />
-            {saveMutation.isPending ? 'Saving…' : `Save ${content.noun}`}
-          </Button>
-          {error && <p className="mt-2 text-sm text-red-800">{error}</p>}
-        </div>
-      </div>
 
-      <h2 className="mb-4 font-display text-2xl">{TOPIC_CONTENT[sectionId].collection}</h2>
+      </div>
+      </>}
+    >
       <div className="space-y-6">
         {sectionId === 'identity'
           ? identityGroups.map((group) => (
@@ -544,13 +545,9 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
               />
             ))}
 
-        {entriesQuery.data?.length === 0 && (
-          <div className="rounded-xl border border-dashed border-warm-300 px-6 py-12 text-center text-sm text-warm-500">
-            {content.empty}
-          </div>
-        )}
+
       </div>
-    </SectionPage>
+    </RecordPage>
     <PaywallSheet open={paywallOpen} onClose={() => setPaywallOpen(false)} />
     </>
   )
@@ -582,7 +579,7 @@ function EntryCard({
   const kindLabel = kindLabelFor(def, entry.kind)
   const hidePersonField = def.id === 'identity'
   return (
-    <article className="rounded-xl border border-warm-200 bg-ivory-50/80 px-5 py-4 shadow-soft">
+    <article data-record-id={entry.id} tabIndex={-1} className="rounded-xl border border-warm-200 bg-ivory-50/80 px-5 py-4 shadow-soft">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h3 className="font-medium text-charcoal-900">{entry.title}</h3>

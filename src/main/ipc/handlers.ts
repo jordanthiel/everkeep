@@ -1,3 +1,5 @@
+import { registerSharingHandlers } from './sharingHandlers'
+import { SavePacketDraftSchema } from '../../shared/schemas/packet'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { join } from 'path'
 import { IpcChannels } from '../../shared/types/ipc'
@@ -46,6 +48,7 @@ import { VaultService } from '../services/VaultService'
 import { getUpdateService } from '../services/UpdateService'
 import { fromError, ok } from './result'
 
+let stopSharing: (() => void) | null = null
 let vaultService: VaultService | null = null
 let licenseService: LicenseService | null = null
 
@@ -116,7 +119,11 @@ async function pickAttachmentFile(): Promise<{ path: string; filename: string } 
 }
 
 export function registerIpcHandlers(): void {
+  stopSharing = registerSharingHandlers(getVaultService)
   const service = getVaultService()
+  ipcMain.handle(IpcChannels.vault.getPacketDraft, async () => { try { return ok(service.getPacketDraft()) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.savePacketDraft, async (_event, raw) => { try { const input = SavePacketDraftSchema.parse(raw); if (service.getStatus().session?.metadata.id !== input.vaultId) throw new Error('The active vault has changed.'); return ok(service.savePacketDraft(input.draft)) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.clearPacketDraft, async () => { try { return ok(service.clearPacketDraft()) } catch (error) { return fromError(error) } })
   ipcMain.handle(IpcChannels.vault.getHandoff, async () => { try { return ok(service.getHandoff()) } catch (error) { return fromError(error) } })
   ipcMain.handle(IpcChannels.vault.updateHandoff, async (_event, raw) => { try { return ok(service.updateHandoff(HandoffSchema.parse(raw))) } catch (error) { return fromError(error) } })
   ipcMain.handle(IpcChannels.vault.getExportCatalog, async () => { try { return ok(service.getExportCatalog()) } catch (error) { return fromError(error) } })
@@ -682,6 +689,7 @@ export function registerIpcHandlers(): void {
 }
 
 export function shutdownVaultService(): void {
+  stopSharing?.()
   if (vaultService) {
     vaultService.closeVault()
     vaultService = null

@@ -1,7 +1,12 @@
+import { SharedVaultAdapter } from './SharedVaultAdapter'
+import { SharingLinkRepository, type SharingLink } from '../repositories/SharingLinkRepository'
+import type { SharedSnapshot } from '../../shared/sharing'
+import { PacketDraftRepository } from '../repositories/PacketDraftRepository'
+import type { PacketDraft } from '../../shared/types/packet'
 import { RecordLoginRepository } from '../repositories/RecordLoginRepository'
 import { RecordLoginSchema } from '../../shared/schemas/recordLogin'
 import type { RecordLoginInput } from '../../shared/types/recordLogin'
-import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, readFileSync, writeFileSync } from 'fs'
+import { chmodSync, rmSync, copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, readFileSync, writeFileSync } from 'fs'
 import JSZip from 'jszip'
 import { HandoffRepository } from '../repositories/HandoffRepository'
 import type { HandoffInput, BackupCheck } from '../../shared/types/handoff'
@@ -525,6 +530,52 @@ export class VaultService {
     }
     return this.openVault({ filePath: destination, password: input.password })
   }
+
+  getSharingSnapshot() { return new SharedVaultAdapter(this.requireOpenDb(), this.encryption, this.encryptionKey).snapshot() }
+  applySharingSnapshot(snapshot: SharedSnapshot) { new SharedVaultAdapter(this.requireOpenDb(), this.encryption, this.encryptionKey).apply(snapshot) }
+  getSharingAttachment(id: string) { return new SharedVaultAdapter(this.requireOpenDb(), this.encryption, this.encryptionKey).readAttachment(id) }
+  getSharingLink() { return new SharingLinkRepository(this.requireOpenDb()).get() }
+  saveSharingLink(link: SharingLink) { new SharingLinkRepository(this.requireOpenDb()).save(link) }
+  verifySharingPassword(password: string) {
+    const status = this.getStatus()
+    this.requireOpenDb()
+    if (!status.session?.metadata.isPasswordProtected) throw new Error('This vault does not have a password.')
+    const row = this.db!.prepare('SELECT password_verifier,encryption_salt,encryption_params FROM vault_metadata LIMIT 1').get() as { password_verifier: string; encryption_salt: string; encryption_params: string }
+    const key = this.encryption.verifyPassword(password, row.encryption_salt, row.encryption_params, row.password_verifier)
+    if (!key) throw new Error('The vault password is incorrect.')
+    this.encryption.clearKey(key)
+  }
+  async savePortableCopy(destinationPath: string) {
+    const db = this.requireOpenDb()
+    ensureParentDirectory(destinationPath)
+    const destination = ensureVaultExtension(destinationPath)
+    if (existsSync(destination)) throw new Error('A file already exists at that location.')
+    this.persistProtectedVault()
+    if (this.encryptionKey) copyFileSync(this.filePath!, destination)
+    else {
+      await db.backup(destination)
+      chmodSync(destination, 0o600)
+      const copy = openDatabase(destination)
+      try {
+        const attachments = copy.prepare('SELECT id,storage_path FROM attachments WHERE archived_at IS NULL').all() as Array<{ id: string; storage_path: string }>
+        withTransaction(copy, () => {
+          for (const item of attachments) {
+            if (!copy.prepare('SELECT 1 FROM attachment_contents WHERE attachment_id=?').get(item.id)) {
+              copy.prepare('INSERT INTO attachment_contents VALUES(?,?)').run(item.id, readFileSync(item.storage_path))
+            }
+            copy.prepare('UPDATE attachments SET storage_path=? WHERE id=?').run(`vault:${item.id}`, item.id)
+          }
+        })
+      } catch (error) { closeDatabase(copy); rmSync(destination, { force: true }); throw error }
+      finally { closeDatabase(copy) }
+    }
+    chmodSync(destination, 0o600)
+    return { path: destination }
+  }
+
+  getPacketDraft() { return new PacketDraftRepository(this.requireOpenDb()).get() }
+  savePacketDraft(input: PacketDraft) { return new PacketDraftRepository(this.requireOpenDb()).save(input) }
+  clearPacketDraft() { return new PacketDraftRepository(this.requireOpenDb()).clear() }
 
   getHandoff() { return new HandoffRepository(this.requireOpenDb()).get() }
   updateHandoff(input: HandoffInput) { return new HandoffRepository(this.requireOpenDb()).update(input) }

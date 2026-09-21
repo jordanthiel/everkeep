@@ -28,7 +28,14 @@
     "website:dev": "npm --prefix website run dev",
     "website:build": "npm --prefix website run build",
     "website:preview": "npm --prefix website run preview",
-    "test:electron": "npm run rebuild:electron && node scripts/test-electron.mjs"
+    "test:packet": "npm run build && node scripts/test-packet.mjs",
+    "test:record-pages": "npm run build && node scripts/test-record-pages.mjs",
+    "test:electron": "npm run rebuild:electron && node scripts/test-electron.mjs",
+    "sharing:build": "vite build --config sharing/vite.config.ts",
+    "sharing:dev": "supabase functions serve sharing --env-file supabase/.env.local",
+    "test:sharing": "npm run build && npm run sharing:build && node scripts/test-sharing.mjs",
+    "test:sharing:postgres": "node scripts/test-sharing-postgres.mjs",
+    "test:sharing:supabase": "node scripts/supabase-local-smoke.mjs"
   },
   "dependencies": {
     "@noble/ed25519": "^2.3.0",
@@ -71,6 +78,7 @@
     "eslint-plugin-react-refresh": "^0.4.18",
     "png2icons": "^2.0.1",
     "postcss": "^8.5.1",
+    "postgres": "^3.4.7",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
     "vite": "^6.0.11",
@@ -145,6 +153,14 @@
         "description": "Everkeep vault backup",
         "role": "Viewer",
         "rank": "Owner"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "Everkeep shared vault",
+        "schemes": [
+          "everkeep"
+        ]
       }
     ]
   }

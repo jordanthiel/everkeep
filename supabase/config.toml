@@ -1,0 +1,40 @@
+project_id = "everkeep"
+
+[functions.sharing]
+# Sign-in is public; the handler validates Supabase Auth on every protected request.
+verify_jwt = false
+entrypoint = "./functions/sharing/index.ts"
+import_map = "./functions/sharing/deno.json"
+
+[api]
+port = 56421
+
+[db]
+port = 56422
+shadow_port = 56420
+major_version = 17
+
+[studio]
+enabled = true
+port = 56423
+
+[analytics]
+enabled = false
+
+[inbucket]
+port = 56424
+
+[auth]
+site_url = "http://127.0.0.1:5173"
+
+[auth.email]
+otp_length = 6
+otp_expiry = 600
+
+[auth.email.template.magic_link]
+subject = "Your Everkeep sign-in code"
+content_path = "./supabase/templates/sign-in.html"
+
+[auth.email.template.confirmation]
+subject = "Your Everkeep sign-in code"
+content_path = "./supabase/templates/sign-in.html"

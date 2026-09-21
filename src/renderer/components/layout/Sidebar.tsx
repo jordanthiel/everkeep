@@ -10,7 +10,7 @@ export function Sidebar() {
   const session = useVaultStore(s => s.session)
   const { statuses } = useJourneyProgress()
   const activeGroup = groupForPath(pathname)
-  const finish = ['/finish', '/review', '/start-here', '/backup', '/export'].includes(pathname)
+  const finish = ['/check', '/finish', '/review', '/start-here', '/backup', '/export'].includes(pathname)
   const itemClass = (active: boolean) => cn('block rounded-lg px-4 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-500', active ? 'bg-forest-700 text-ivory-50' : 'text-charcoal-700 hover:bg-warm-100')
   return <aside className="flex h-full w-[224px] shrink-0 flex-col border-r border-warm-200 bg-ivory-50">
     <div className="app-drag-region px-6 pb-9 pt-12"><EverkeepMark size="sm" /><p className="mt-2 truncate text-xs text-warm-500">{session?.metadata.householdName || session?.metadata.name || 'Your vault'}</p></div>
@@ -26,6 +26,7 @@ export function Sidebar() {
         </Link>
       })}
       <Link to="/finish" className={itemClass(finish)} aria-current={finish ? 'page' : undefined}>5. Review & share</Link>
+      <Link to="/shared" className={itemClass(false)}>Shared with me</Link>
     </nav>
     <p className="px-7 py-6 text-xs leading-relaxed text-warm-500">Go at your own pace.<br />You can revisit any section.</p>
   </aside>

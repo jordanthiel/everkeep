@@ -13,7 +13,7 @@ const capabilities = [
   },
   {
     title: 'Attach the real files',
-    body: 'Keep scans and PDFs with the entries they belong to. Attachments stay on your computer and travel with your backups.'
+    body: 'Keep scans and PDFs with the entries they belong to. Attachments stay with your saved vault and are included when you enable online sharing.'
   },
   {
     title: 'Leave clear instructions',
@@ -123,7 +123,7 @@ export default function App() {
             {[
               ['SQLite vaults', 'Portable files you control and can back up yourself.'],
               ['Optional encryption', 'Argon2id + AES-GCM for password-protected vaults.'],
-              ['Export when ready', 'Readable HTML reports and full vault backups.']
+              ['Export when ready', 'Save an Everkeep file or export a readable copy.']
             ].map(([term, detail]) => (
               <div key={term}>
                 <dt className="font-display text-lg text-brass-400">{term}</dt>
@@ -205,7 +205,7 @@ export default function App() {
             </h2>
             <p className="mt-4 text-lg leading-relaxed text-charcoal-700">
               Install on your Mac or Windows PC and create your first vault in minutes. Free to try
-              with {checkout.freeEntryCap} entries — your information stays on the device you choose.
+              with {checkout.freeEntryCap} entries — your information is saved locally until you choose online sharing.
             </p>
             <div className="mt-8">
               <DownloadButtons />

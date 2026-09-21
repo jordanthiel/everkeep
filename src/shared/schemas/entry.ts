@@ -1,3 +1,4 @@
+import { PacketIntroductionSchema } from './packet'
 import { RecordLoginSchema } from './recordLogin'
 import { z } from 'zod'
 
@@ -57,7 +58,9 @@ export const ExportOptionsSchema = z.object({
   includePrivateLetters: z.boolean().optional(),
   includeStartHere: z.boolean().optional(),
   includeAccessPlan: z.boolean().optional(),
-  scenario: z.enum(['incapacity', 'death']).optional(),
+  scenario: z.enum(['incapacity', 'death', 'both']).optional(),
+  recipientContactId: z.string().uuid().optional(),
+  introduction: PacketIntroductionSchema.optional(),
   recipient: z.string().max(200).optional(),
   sections: z.array(VaultSectionIdSchema).optional(),
   includeSensitive: z.boolean().optional()

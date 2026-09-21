@@ -1,3 +1,4 @@
+import { packetHasContent } from '../../shared/packet'
 import { writeFileSync } from 'fs'
 import type { VaultDatabase } from '../database/connection'
 import type { EncryptionService } from '../security/EncryptionService'
@@ -48,16 +49,34 @@ export class ExportService {
       <h1>${escapeHtml(metadata.name)}</h1><p class="meta">Prepared ${escapeHtml(new Date().toLocaleString())}${input.recipient ? ` · For ${escapeHtml(input.recipient)}` : ''}</p>
       <p class="warn">This report is an unencrypted copy. Give it only to the intended recipient and store it securely. Attached files are not included; use an Everkeep backup for a complete vault copy.</p>`]
     if (watermark) parts.push('<p class="meta">Created with Everkeep Free</p>')
+    if (input.introduction) {
+      if (input.recipientContactId && !allPeople.some(person => person.id === input.recipientContactId)) throw new Error('The recipient is no longer available. Choose a recipient again.')
+      if (input.includeStartHere && input.introduction.helpers.some(helper => !allPeople.some(person => person.id === helper.personId))) throw new Error('A supporting contact is no longer available. Update the introduction.')
+      const effective = { ...input, selection: { people: people.map(p => p.id), accounts: accounts.map(a => a.id), entries: entries.map(e => e.id) } }
+      if (!packetHasContent(effective, allPeople)) throw new Error('Add some information before previewing this packet.')
+    }
     if (input.includeStartHere) {
       const plan = new HandoffRepository(this.db).get()
-      const contact = (id: string) => {
-        const person = allPeople.find((p) => p.id === id)
-        return person ? [person.fullName, person.phone, person.email].filter(Boolean).join(' · ') : ''
+      const intro = input.introduction ?? { ...plan, helpers: [...new Set([plan.primaryContactId, plan.alternateContactId].filter(Boolean))].map(personId => ({ personId, help: '' })) }
+      const blocks: string[] = []
+      function section(title: string, value: string) {
+        if (value.trim()) blocks.push(`<h3>${escapeHtml(title)}</h3><p style="white-space:pre-wrap">${escapeHtml(value)}</p>`)
       }
-      parts.push(`<h2>Start here — ${input.scenario === 'death' ? 'after my death' : 'if I cannot help right now'}</h2><div class="card"><dl>`)
-      parts.push(field('Call first', contact(plan.primaryContactId)), field('If unavailable', contact(plan.alternateContactId)), field('Immediate care responsibilities', plan.careInstructions), field('What to do', input.scenario === 'death' ? plan.deathInstructions : plan.incapacityInstructions), field('Original documents', plan.documentsLocation))
-      if (input.includeAccessPlan) parts.push(field('Find the vault', plan.vaultLocation), field('Find the backup', plan.backupLocation), field('How an authorized person can obtain access', plan.passwordInstructions))
-      parts.push('</dl></div>')
+      section('Immediate priorities', intro.careInstructions)
+      if (input.scenario !== 'death') section('If I cannot help', intro.incapacityInstructions)
+      if (input.scenario === 'death' || input.scenario === 'both') section('After my death', intro.deathInstructions)
+      const helpers = intro.helpers.filter(helper => helper.personId !== input.recipientContactId).flatMap(helper => {
+        const person = allPeople.find(person => person.id === helper.personId)
+        return person ? [`<div class="card"><h3>${escapeHtml(person.fullName)}</h3><dl>${field('Phone', person.phone)}${field('Email', person.email)}${field('How they can help', helper.help)}</dl></div>`] : []
+      })
+      if (helpers.length) blocks.push('<h3>Other people who can help</h3>', ...helpers)
+      section('Original documents', intro.documentsLocation)
+      if (input.includeAccessPlan) {
+        section('Find the vault', intro.vaultLocation)
+        section('Find the backup', intro.backupLocation)
+        section('How an authorized person can obtain access', intro.passwordInstructions)
+      }
+      if (blocks.length) parts.push(`<h2>Start here — ${input.scenario === 'both' ? 'if I cannot help or after my death' : input.scenario === 'death' ? 'after my death' : 'if I cannot help right now'}</h2>`, ...blocks)
     }
     if (people.length || !input.selection) {
       parts.push('<h2>Contacts</h2>')

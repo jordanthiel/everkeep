@@ -3,10 +3,11 @@ import { RecordLoginFields } from '@renderer/components/records/RecordLoginField
 import { Link, useSearchParams } from 'react-router-dom'
 import { TOPIC_CONTENT } from '@shared/sections/topicContent'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { emptyAccountForm as emptyForm, accountToForm } from '@shared/accountForm'
 import { Save } from 'lucide-react'
-import { SectionPage } from '@renderer/components/layout/SectionPage'
+import { RecordPage } from '@renderer/components/records/RecordPage'
+import { useRecordEditor } from '@renderer/hooks/useRecordEditor'
 import { PersonPicker } from '@renderer/components/people/PersonPicker'
 import { RecordActions } from '@renderer/components/records/RecordActions'
 import { Button } from '@renderer/components/ui/Button'
@@ -40,8 +41,10 @@ export function FinancialPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const setSaveStatus = useVaultStore((s) => s.setSaveStatus)
-  const formRef = useRef<HTMLDivElement>(null)
   const [form, setForm] = useState(emptyForm)
+  const editor = useRecordEditor(form)
+  const openEditor = editor.open
+  const setRecordMessage = editor.setMessage
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -65,18 +68,20 @@ export function FinancialPage() {
 
   const startEdit = useCallback((account: Account) => {
     setEditingId(account.id)
-    setForm(accountToForm(account))
+    const initial = accountToForm(account)
+    setForm(initial)
+    openEditor(initial)
     setError(null)
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }, [])
+  }, [openEditor])
 
   useEffect(() => {
     const id = searchParams.get('edit')
+    if (!id || !accountsQuery.isSuccess) return
     const account = accountsQuery.data?.find(item => item.id === id)
-    if (!account) return
-    startEdit(account)
+    if (account) startEdit(account)
+    else setRecordMessage('This account is no longer available. Choose another record or add a new one.')
     setSearchParams({}, { replace: true })
-  }, [searchParams, accountsQuery.data, setSearchParams, startEdit])
+  }, [searchParams, accountsQuery.data, accountsQuery.isSuccess, setSearchParams, startEdit, setRecordMessage])
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -113,9 +118,7 @@ export function FinancialPage() {
       setError(null)
       setSaveStatus('saving')
     },
-    onSuccess: async () => {
-      resetForm()
-      setSaveStatus('saved')
+    onSuccess: async (saved) => {
       const vaultId = useVaultStore.getState().session?.metadata.id
       const status = vaultId ? useJourneyStore.getState().vaults[vaultId]?.['financial'] : undefined
       if (vaultId && (!status || status === 'reviewed' || status === 'not-applicable')) useJourneyStore.getState().mark(vaultId, 'financial', 'in-progress')
@@ -123,6 +126,9 @@ export function FinancialPage() {
       await queryClient.invalidateQueries({ queryKey: ['entries'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       await queryClient.invalidateQueries({ queryKey: ['review'] })
+      resetForm()
+      setSaveStatus('saved')
+      editor.saved(saved.id)
       window.setTimeout(() => setSaveStatus('idle'), 1500)
     },
     onError: (err) => {
@@ -132,13 +138,18 @@ export function FinancialPage() {
   })
 
   return (
-    <SectionPage journeyBlocked={Boolean(editingId) || JSON.stringify(form) !== JSON.stringify(emptyForm()) || saveMutation.isPending}
-      title="Financial"
-      description="Accounts your family would need to discover — institutions, ownership, and beneficiaries. Balances are optional."
-      badge="Discovery first"
-    >
+    <RecordPage title="Financial" description="Keep track of accounts your family would need to find."
+      collection={TOPIC_CONTENT.financial.collection} noun={'account'} empty={TOPIC_CONTENT.financial.empty}
+      count={accountsQuery.data?.length ?? 0} loading={accountsQuery.isPending} failed={accountsQuery.isError} retry={() => void accountsQuery.refetch()}
+      editor={editor} saving={saveMutation.isPending}
+      onAdd={() => { resetForm(); openEditor(emptyForm()) }}
+      onCancel={() => { resetForm(); editor.close() }}
+      saveAction={<div>
+          <Button disabled={!form.institution.trim() || saveMutation.isPending} onClick={() => saveMutation.mutate()}><Save className="h-4 w-4" />{saveMutation.isPending ? 'Saving…' : 'Save account'}</Button>
+          {error && <p role="alert" className="mt-2 text-sm text-red-800">{error}</p>}
+        </div>}
+      form={<>
       <div
-        ref={formRef}
         className={`mb-6 grid gap-4 rounded-xl border bg-ivory-50/80 p-5 md:grid-cols-2 ${
           editingId ? 'border-forest-600/40 ring-1 ring-forest-600/20' : 'border-warm-200'
         }`}
@@ -146,17 +157,13 @@ export function FinancialPage() {
         <div className="md:col-span-2 flex items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-2xl text-charcoal-900">
-              {editingId ? 'Update this account' : TOPIC_CONTENT.financial.heading}
+              {editingId ? 'Edit account' : 'Add account'}
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-warm-500">
               {TOPIC_CONTENT.financial.guidance}
             </p>
           </div>
-          {(editingId || JSON.stringify(form) !== JSON.stringify(emptyForm())) && (
-            <Button size="sm" variant="ghost" onClick={resetForm}>
-              Cancel
-            </Button>
-          )}
+
         </div>
         <div>
           <Label htmlFor="institution">Institution</Label>
@@ -245,17 +252,17 @@ export function FinancialPage() {
         </fieldset>
         <RecordLoginFields key={editingId ?? 'new'} value={form.login} provider={form.institution} onChange={login => setForm(current => ({ ...current, login }))} />
         <div><Label htmlFor="account-notes">Notes</Label><Input id="account-notes" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} /></div>
-        <div>
-          <Button disabled={!form.institution.trim() || saveMutation.isPending} onClick={() => saveMutation.mutate()}><Save className="h-4 w-4" />{saveMutation.isPending ? 'Saving…' : 'Save account'}</Button>
-          {error && <p role="alert" className="mt-2 text-sm text-red-800">{error}</p>}
-        </div>
+
       </div>
-      <h2 className="mb-4 font-display text-2xl">{TOPIC_CONTENT.financial.collection}</h2>
+      </>}
+    >
+
+
       <div className="space-y-3">
         {(accountsQuery.data ?? []).map((account) => {
           const primary = account.beneficiaries.filter((b) => b.designationType === 'primary')
           const primaryTotal = primary.reduce((sum, b) => sum + b.percentage, 0)
-          return <article key={account.id} className="rounded-xl border border-warm-200 bg-ivory-50/80 px-5 py-4 shadow-soft">
+          return <article data-record-id={account.id} tabIndex={-1} key={account.id} className="rounded-xl border border-warm-200 bg-ivory-50/80 px-5 py-4 shadow-soft">
         <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="font-medium text-charcoal-900">
@@ -305,12 +312,8 @@ export function FinancialPage() {
             </article>
         })}
 
-        {accountsQuery.data?.length === 0 && (
-          <div className="rounded-xl border border-dashed border-warm-300 px-6 py-12 text-center text-sm text-warm-500">
-            {TOPIC_CONTENT.financial.empty}
-          </div>
-        )}
+
       </div>
-    </SectionPage>
+    </RecordPage>
   )
 }

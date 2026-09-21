@@ -44,18 +44,15 @@ export function SettingsPage() {
     return unsubscribe
   }, [])
 
-  async function handleBackup() {
+  async function handleSaveCopy() {
     if (!session) return
     setError(null)
     setMessage(null)
     try {
-      const suggested = `${session.metadata.name}-backup`
-      const path = await unwrap(getEverkeepApi().vault.pickBackupPath(suggested))
-      if (!path) return
-      const result = await unwrap(getEverkeepApi().vault.backup({ destinationPath: path }))
-      setMessage(`Backup created at ${result.backupPath}`)
+      const path = await getEverkeepApi().sharing.saveCopy()
+      if (path) setMessage(`Everkeep file saved at ${path}. Your original file remains open.`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Backup failed.')
+      setError(err instanceof Error ? err.message : 'Unable to save the file.')
     }
   }
 
@@ -197,7 +194,7 @@ export function SettingsPage() {
   return (
     <SectionPage
       title="Settings"
-      description="Vault location, backups, and product information."
+      description="Saved file location, copies, and product information."
       badge="Preferences"
     >
       <div className="space-y-5">
@@ -222,8 +219,8 @@ export function SettingsPage() {
             <p className="mt-2 text-sm text-warm-500">No vault open.</p>
           )}
           <div className="mt-5 flex flex-wrap gap-3">
-            <Button variant="secondary" onClick={() => void handleBackup()} disabled={!session}>
-              Back Up Vault
+            <Button variant="secondary" onClick={() => void handleSaveCopy()} disabled={!session}>
+              Save an Everkeep file
             </Button>
             {session?.metadata.isPasswordProtected && (
               <Button variant="secondary" onClick={() => void handleLock()}>
@@ -404,8 +401,7 @@ export function SettingsPage() {
           <h2 className="font-medium text-charcoal-900">About Everkeep</h2>
           <p className="mt-3 text-sm leading-relaxed text-warm-500">{LEGAL_DISCLAIMER}</p>
           <p className="mt-4 text-xs text-warm-400">
-            Everkeep is local-first. Your vault stays on this computer and is never uploaded to an
-            Everkeep server. Password protection encrypts the entire vault and stored attachments using
+            Everkeep is local-first. Your vault is saved on this computer. If you enable online sharing, records and attachments are uploaded to the sharing service, which encrypts stored information and enforces recipient permissions. Password protection encrypts the entire vault and stored attachments using
             Argon2id + AES-256-GCM. Older backups and exported reports keep their existing protection.
             Opening an attachment creates a temporary decrypted copy for the external viewer; Everkeep
             removes its temporary copy when you lock or close the vault.

@@ -1,8 +1,9 @@
 import { BackupOpenNotice } from '@renderer/components/layout/BackupOpenNotice'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { SectionHomePage } from '@renderer/pages/SectionHomePage'
 import { TopicIntroPage } from '@renderer/pages/TopicIntroPage'
-import { FinishPage } from '@renderer/pages/FinishPage'
+import { VaultSharingPage } from '@renderer/pages/VaultSharingPage'
+import { SharedVaultsPage } from '@renderer/pages/SharedVaultsPage'
 import { useEffect, useState } from 'react'
 import { createHashRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -84,8 +85,30 @@ function RestoreRoute() {
   return <RestoreVaultPage key={location.search} />
 }
 
+function SharingSyncRefresh() {
+  useEffect(() => {
+    let last = ''
+    const timer = setInterval(() => { void getEverkeepApi().sharing?.status().then(status => {
+      const next = status.local?.lastSyncedAt || ''
+      if (next && next !== last) { last = next; void queryClient.invalidateQueries() }
+    }).catch(() => {}) }, 16000)
+    return () => clearInterval(timer)
+  }, [])
+  return null
+}
+function SharingRequests() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    const consume = async () => { const id = await getEverkeepApi().sharing?.getOpenRequest(); if (id) navigate(`/shared?vault=${id}`) }
+    void consume().catch(() => {})
+    return getEverkeepApi().sharing?.onOpenRequest(() => void consume().catch(() => {}))
+  }, [navigate])
+  return null
+}
+
 const router = createHashRouter(createRoutesFromElements(
-  <Route element={<><UpdateBanner /><BackupOpenNotice /><Outlet /></>}>
+  <Route element={<><UpdateBanner /><BackupOpenNotice /><SharingRequests /><SharingSyncRefresh /><Outlet /></>}>
+          <Route path="/shared" element={<SharedVaultsPage />} />
           <Route path="/welcome" element={<WelcomePage />} />
           <Route path="/create-vault" element={<CreateVaultPage />} />
           <Route path="/restore" element={<RestoreRoute />} />
@@ -100,7 +123,7 @@ const router = createHashRouter(createRoutesFromElements(
             <Route path="/" element={<DashboardPage />} />
             <Route path="/sections/:groupId" element={<SectionHomePage />} />
             <Route path="/guide/:topicId" element={<TopicIntroPage />} />
-            <Route path="/finish" element={<FinishPage />} />
+            <Route path="/finish" element={<VaultSharingPage />} />
             <Route path="/start-here" element={<HandoffPage />} />
             <Route path="/backup" element={<BackupPage />} />
             <Route path="/people" element={<PeoplePage />} />
@@ -121,7 +144,8 @@ const router = createHashRouter(createRoutesFromElements(
             <Route path="/final-wishes" element={<SectionRoute id="final-wishes" />} />
             <Route path="/letters" element={<SectionRoute id="letters" />} />
             <Route path="/documents" element={<SectionRoute id="documents" />} />
-            <Route path="/review" element={<ReviewPage />} />
+            <Route path="/review" element={<VaultSharingPage />} />
+            <Route path="/check" element={<ReviewPage />} />
             <Route path="/export" element={<ExportPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>

@@ -43,7 +43,7 @@ describe('Everkeep vault persistence', () => {
 
     expect(created.filePath).toBe(vaultPath)
     expect(created.metadata.name).toBe('Thiel Family')
-    expect(created.metadata.schemaVersion).toBe(6)
+    expect(created.metadata.schemaVersion).toBe(8)
     expect(created.metadata.isPasswordProtected).toBe(false)
 
     const person = service.createPerson({

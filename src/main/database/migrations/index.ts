@@ -1,3 +1,5 @@
+import { migration008 } from './008_sharing_link'
+import { migration007 } from './007_packet_draft'
 import { migration006 } from './006_record_logins'
 import { migration001 } from './001_initial_schema'
 import { migration002 } from './002_vault_entries'
@@ -6,7 +8,7 @@ import { migration004 } from './004_unify_contacts_into_people'
 import { migration005 } from './005_family_handoff'
 import type { Migration } from './types'
 
-export const migrations: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006]
+export const migrations: Migration[] = [migration001, migration002, migration003, migration004, migration005, migration006, migration007, migration008]
 
 export function getLatestSchemaVersion(): number {
   return migrations.reduce((max, m) => Math.max(max, m.version), 0)

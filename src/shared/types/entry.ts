@@ -1,3 +1,4 @@
+import type { PacketIntroduction } from './packet'
 import type { RecordLoginInput, LinkedRecord } from './recordLogin'
 import type { BaseEntity } from './base'
 
@@ -75,7 +76,9 @@ export interface ExportOptions {
   includePrivateLetters?: boolean
   includeStartHere?: boolean
   includeAccessPlan?: boolean
-  scenario?: 'incapacity' | 'death'
+  scenario?: 'incapacity' | 'death' | 'both'
+  recipientContactId?: string
+  introduction?: PacketIntroduction
   recipient?: string
   sections?: VaultSectionId[]
   includeSensitive?: boolean

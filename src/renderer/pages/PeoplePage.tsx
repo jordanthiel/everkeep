@@ -1,10 +1,11 @@
 import { useJourneyStore } from '@renderer/state/journeyStore'
 import { TOPIC_CONTENT } from '@shared/sections/topicContent'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Save } from 'lucide-react'
-import { SectionPage } from '@renderer/components/layout/SectionPage'
+import { RecordPage } from '@renderer/components/records/RecordPage'
+import { useRecordEditor } from '@renderer/hooks/useRecordEditor'
 import { RecordActions } from '@renderer/components/records/RecordActions'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
@@ -45,8 +46,9 @@ export function PeoplePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const setSaveStatus = useVaultStore((s) => s.setSaveStatus)
-  const formRef = useRef<HTMLDivElement>(null)
   const [form, setForm] = useState(emptyForm)
+  const editor = useRecordEditor(form)
+  const openEditor = editor.open
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const identityDef = getSectionDefinition('identity')
@@ -69,7 +71,7 @@ export function PeoplePage() {
 
   function startEdit(person: Person) {
     setEditingId(person.id)
-    setForm({
+    const initial = {
       fullName: person.fullName,
       relationship: person.relationship ?? 'spouse',
       dateOfBirth: person.dateOfBirth ?? '',
@@ -77,9 +79,10 @@ export function PeoplePage() {
       email: person.email ?? '',
       company: person.company ?? '',
       roles: [...person.roles]
-    })
+    }
+    setForm(initial)
+    openEditor(initial)
     setError(null)
-    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const saveMutation = useMutation({
@@ -108,15 +111,16 @@ export function PeoplePage() {
       setError(null)
       setSaveStatus('saving')
     },
-    onSuccess: async () => {
-      resetForm()
-      setSaveStatus('saved')
+    onSuccess: async (saved) => {
       const vaultId = useVaultStore.getState().session?.metadata.id
       const status = vaultId ? useJourneyStore.getState().vaults[vaultId]?.['people'] : undefined
       if (vaultId && (!status || status === 'reviewed' || status === 'not-applicable')) useJourneyStore.getState().mark(vaultId, 'people', 'in-progress')
       await queryClient.invalidateQueries({ queryKey: ['people'] })
       await queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       await queryClient.invalidateQueries({ queryKey: ['review'] })
+      resetForm()
+      setSaveStatus('saved')
+      editor.saved(saved.id)
       window.setTimeout(() => setSaveStatus('idle'), 1500)
     },
     onError: (err) => {
@@ -135,13 +139,24 @@ export function PeoplePage() {
   }
 
   return (
-    <SectionPage journeyBlocked={Boolean(editingId) || JSON.stringify(form) !== JSON.stringify(emptyForm()) || saveMutation.isPending}
-      title="Contacts"
-      description="Everyone in one list — family, beneficiaries, attorneys, and anyone else. Add a person once, then pick them in other sections. IDs like passports belong on that person."
-      badge="Foundation"
-    >
+    <RecordPage title="Contacts" description="Keep the people your family can turn to in one place."
+      collection={TOPIC_CONTENT.people.collection} noun={'contact'} empty={TOPIC_CONTENT.people.empty}
+      count={peopleQuery.data?.length ?? 0} loading={peopleQuery.isPending} failed={peopleQuery.isError} retry={() => void peopleQuery.refetch()}
+      editor={editor} saving={saveMutation.isPending}
+      onAdd={() => { resetForm(); openEditor(emptyForm()) }}
+      onCancel={() => { resetForm(); editor.close() }}
+      saveAction={<div>
+          <Button
+            disabled={!form.fullName.trim() || saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+          >
+            <Save className="h-4 w-4" />
+            {saveMutation.isPending ? 'Saving…' : 'Save contact'}
+          </Button>
+          {error && <p role="alert" className="mt-2 text-sm text-red-800">{error}</p>}
+        </div>}
+      form={<>
       <div
-        ref={formRef}
         className={`mb-6 grid gap-4 rounded-xl border bg-ivory-50/80 p-5 ${
           editingId ? 'border-forest-600/40 ring-1 ring-forest-600/20' : 'border-warm-200'
         }`}
@@ -149,17 +164,13 @@ export function PeoplePage() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-2xl text-charcoal-900">
-              {editingId ? 'Update this contact' : TOPIC_CONTENT.people.heading}
+              {editingId ? 'Edit contact' : 'Add contact'}
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-warm-500">
               {TOPIC_CONTENT.people.guidance}
             </p>
           </div>
-          {(editingId || JSON.stringify(form) !== JSON.stringify(emptyForm())) && (
-            <Button size="sm" variant="ghost" onClick={resetForm}>
-              Cancel
-            </Button>
-          )}
+
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -251,24 +262,13 @@ export function PeoplePage() {
             })}
           </div>
         </div>
-        <div>
-          <Button
-            disabled={!form.fullName.trim() || saveMutation.isPending}
-            onClick={() => saveMutation.mutate()}
-          >
-            <Save className="h-4 w-4" />
-            {saveMutation.isPending ? 'Saving…' : 'Save contact'}
-          </Button>
-          {error && <p className="mt-2 text-sm text-red-800">{error}</p>}
-        </div>
+
       </div>
+      </>}
+    >
 
-      {peopleQuery.isLoading && <p className="text-sm text-warm-500">Loading contacts…</p>}
-      {peopleQuery.isError && (
-        <p className="text-sm text-red-800">Unable to load contacts. Is a vault open?</p>
-      )}
 
-      <h2 className="mb-4 font-display text-2xl">{TOPIC_CONTENT.people.collection}</h2>
+
       <div className="space-y-3">
         {(peopleQuery.data ?? []).map((person) => {
           const ids = (identityQuery.data ?? []).filter(
@@ -277,6 +277,7 @@ export function PeoplePage() {
           return (
             <article
               key={person.id}
+              data-record-id={person.id} tabIndex={-1}
               className="rounded-xl border border-warm-200 bg-ivory-50/80 px-5 py-4 shadow-soft"
             >
               <div className="flex items-start justify-between gap-4">
@@ -366,12 +367,8 @@ export function PeoplePage() {
           )
         })}
 
-        {peopleQuery.data?.length === 0 && (
-          <div className="rounded-xl border border-dashed border-warm-300 px-6 py-12 text-center text-sm text-warm-500">
-            {TOPIC_CONTENT.people.empty}
-          </div>
-        )}
+
       </div>
-    </SectionPage>
+    </RecordPage>
   )
 }

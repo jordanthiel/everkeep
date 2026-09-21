@@ -96,7 +96,7 @@ export function WelcomePage() {
           </Button>
           <Button size="lg" variant="secondary" onClick={() => void handleOpenExisting()}>
             <FolderOpen className="h-4 w-4" />
-            Open a Vault or Backup
+            Open an Everkeep file
           </Button>
         </div>
 
@@ -173,6 +173,7 @@ export function WelcomePage() {
           </div>
         )}
 
+        <Button variant="secondary" className="mt-6" onClick={() => navigate('/shared')}>Open a vault shared with me</Button>
         <Button variant="ghost" className="mt-6" onClick={() => navigate('/restore')}>Restore an Everkeep backup</Button>
         <p className="mx-auto mt-12 max-w-lg text-center text-xs leading-relaxed text-warm-400">
           {LEGAL_DISCLAIMER}

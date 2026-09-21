@@ -14,6 +14,7 @@ if (process.platform === 'win32') {
 }
 
 function bootstrap(): void {
+  if (app.isPackaged) app.setAsDefaultProtocolClient('everkeep')
   registerIpcHandlers()
   createMainWindow()
   getUpdateService().start()
@@ -25,6 +26,15 @@ function bootstrap(): void {
   })
 }
 
+let sharingRequest: string | null = null
+function receiveSharingLink(value: string) {
+  const match = value.match(/^everkeep:\/\/shared\/([a-f0-9-]{36})\/?$/)
+  if (!match) return
+  sharingRequest = match[1]
+  if (app.isReady()) { const window = BrowserWindow.getAllWindows()[0] ?? createMainWindow(); window.show(); window.focus(); window.webContents.send('sharing:open') }
+}
+app.on('open-url', (event, url) => { event.preventDefault(); receiveSharingLink(url) })
+ipcMain.handle('sharing:openRequest', () => { const id = sharingRequest; sharingRequest = null; return id })
 const requests = new BackupOpenRequests()
 function notifyBackupRequest() {
   if (!app.isReady()) return
@@ -42,8 +52,10 @@ app.on('open-file', (event, path) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
+  process.argv.forEach(receiveSharingLink)
   requests.addArguments(process.argv.slice(app.isPackaged ? 1 : 2), process.cwd())
   app.on('second-instance', (_event, argv, cwd) => {
+    argv.forEach(receiveSharingLink)
     requests.addArguments(argv.slice(app.isPackaged ? 1 : 2), cwd)
     notifyBackupRequest()
   })

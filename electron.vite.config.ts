@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   main: {
+    define: { 'process.env.EVERKEEP_SHARING_BUILD_URL': JSON.stringify(process.env.EVERKEEP_SHARING_URL || '') },
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {

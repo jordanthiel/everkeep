@@ -1,3 +1,5 @@
+import type { DesktopSharingApi } from '../sharing'
+import type { PacketDraft } from './packet'
 import type {
   BackupVaultInput,
   CreateVaultInput,
@@ -28,6 +30,9 @@ import type { LicenseStatus } from './license'
 
 export const IpcChannels = {
   vault: {
+    getPacketDraft: 'vault:getPacketDraft',
+    savePacketDraft: 'vault:savePacketDraft',
+    clearPacketDraft: 'vault:clearPacketDraft',
     getHandoff: 'vault:getHandoff',
     updateHandoff: 'vault:updateHandoff',
     getExportCatalog: 'vault:getExportCatalog',
@@ -126,6 +131,7 @@ export type IpcResult<T> =
   | { ok: false; error: { code: string; message: string } }
 
 export interface EverkeepApi {
+  sharing: DesktopSharingApi
   files: {
     getBackupOpenRequest: () => Promise<string | null>
     dismissBackupOpenRequest: (path: string) => Promise<void>
@@ -142,6 +148,9 @@ export interface EverkeepApi {
     onStatus: (listener: (status: AppUpdateStatus) => void) => () => void
   }
   vault: {
+    getPacketDraft: () => Promise<IpcResult<PacketDraft | null>>
+    savePacketDraft: (input: PacketDraft, vaultId: string) => Promise<IpcResult<PacketDraft>>
+    clearPacketDraft: () => Promise<IpcResult<{ cleared: boolean }>>
     getHandoff: () => Promise<IpcResult<FamilyHandoff>>
     updateHandoff: (input: HandoffInput) => Promise<IpcResult<FamilyHandoff>>
     getExportCatalog: () => Promise<IpcResult<ExportCatalog>>
