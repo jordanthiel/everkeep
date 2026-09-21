@@ -11,7 +11,7 @@ try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null') } catch {
 const transport = new SharingTransport(endpoint, session => { try { if (session) sessionStorage.setItem(storageKey, JSON.stringify(session)); else sessionStorage.removeItem(storageKey) } catch { /* With storage disabled, sign-in lasts until this page closes. */ } }, saved)
 const request = <T,>(path: string, method = 'GET', input?: unknown) => transport.request<T>(path, method, input)
 const client: SharingClient = {
-  status: async () => ({ configured: Boolean(endpoint), url: `${location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}`, account: await request('/account'), local: null }),
+  status: async () => ({ configured: Boolean(endpoint), url: `${location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/share`, account: await request('/account'), local: null }),
   requestCode: email => request('/auth/request', 'POST', { email }),
   verifyCode: async (challengeId, email, code) => transport.verify(challengeId, email, code),
   logout: () => transport.logout(),
@@ -28,6 +28,6 @@ const client: SharingClient = {
 }
 // An unsigned-in visitor should see the email form, not an authentication error.
 const rawStatus = client.status
-client.status = async () => { try { return await rawStatus() } catch { return { configured: Boolean(endpoint), url: `${location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}`, account: null, local: null } } }
+client.status = async () => { try { return await rawStatus() } catch { return { configured: Boolean(endpoint), url: `${location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/share`, account: null, local: null } } }
 const match = location.hash.match(/^#vault\/([a-f0-9-]{36})$/)
-createRoot(document.getElementById('root')!).render(<React.StrictMode><SharedVaultApp client={client} initialVaultId={match?.[1]} /></React.StrictMode>)
+createRoot(document.getElementById('root')!).render(<React.StrictMode><nav aria-label="Everkeep website" style={{ padding: '16px 24px' }}><a href="/">← Everkeep home</a></nav><SharedVaultApp client={client} initialVaultId={match?.[1]} /></React.StrictMode>)

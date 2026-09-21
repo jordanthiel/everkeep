@@ -28,7 +28,7 @@ app.whenReady().then(async () => {
     AUTH: authFixture((to, text) => mails.push({ to, text })),
     DB: { prepare: sql => new Statement(sql), batch: async statements => db.transaction(() => statements.map(statement => { const s = statement as Statement; return db.prepare(s.sql).run(...s.values) }))() },
     FILES: { put: async (key, value) => { objects.set(key, typeof value === 'string' ? new TextEncoder().encode(value) : new Uint8Array(value)) }, get: async key => objects.has(key) ? { arrayBuffer: async () => new Uint8Array(objects.get(key)!).buffer } : null, delete: async key => { objects.delete(key) } },
-    ASSETS: { fetch: async request => { const path = new URL(request.url).pathname; const file = path.startsWith('/assets/') && !path.includes('..') ? path : '/index.html'; return new Response(readFileSync(resolve('sharing/dist') + file), { headers: { 'Content-Type': extname(file) === '.js' ? 'text/javascript' : extname(file) === '.css' ? 'text/css' : 'text/html' } }) } }
+    ASSETS: { fetch: async request => { const path = new URL(request.url).pathname; const file = path.startsWith('/assets/') && !path.includes('..') ? path : path.startsWith('/share') ? '/share/index.html' : '/index.html'; return new Response(readFileSync(resolve('website/dist') + file), { headers: { 'Content-Type': extname(file) === '.js' ? 'text/javascript' : extname(file) === '.css' ? 'text/css' : 'text/html' } }) } }
   }
   const handler = createSharingHandler(env, { mail: async (to, _subject, text) => { mails.push({ to, text }) } })
   const server = createServer(async (incoming, outgoing) => {
@@ -39,7 +39,7 @@ app.whenReady().then(async () => {
       outgoing.writeHead(response.status, Object.fromEntries(response.headers)); outgoing.end(Buffer.from(await response.arrayBuffer()))
     } catch (error) { outgoing.writeHead(500); outgoing.end(String(error)) }
   })
-  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`; env.PUBLIC_URL = origin; process.env.EVERKEEP_SHARING_URL = origin
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`; env.PUBLIC_URL = `${origin}/share`; process.env.EVERKEEP_SHARING_URL = origin
   const service = new VaultService({ recentStore: new RecentVaultsStore(join(root, 'recent.json')), attachmentsRootFactory: id => join(root, id) })
   const stop = registerSharingHandlers(() => service)
   ipcMain.handle('sharing:openRequest', () => null)
@@ -68,7 +68,11 @@ app.whenReady().then(async () => {
     await click(desktop, 'Review email and share'); await click(desktop, 'Send invitation'); await until(desktop, "document.body.innerText.includes('Invitation emailed to child@example.com')")
     assert.ok(mails.at(-1)!.text.includes(`#vault/${id}`)); assert.ok(mails.at(-1)!.text.includes('View only'))
     for (const width of [1280, 960]) { desktop.setSize(width, width === 960 ? 640 : 840); await pause(150); writeFileSync(resolve(`.everkeep-temp/sharing-owner-${width}.png`), (await desktop.webContents.capturePage()).toPNG()); assert.ok(await execute(desktop, 'document.documentElement.scrollWidth <= innerWidth')) }
-    await browser.loadURL(`${origin}/#vault/${id}`); await signIn(browser, 'child@example.com'); await until(browser, "document.body.innerText.includes('Accept invitation and open')"); await click(browser, 'Accept invitation and open'); await until(browser, "document.body.innerText.includes('Care directions')")
+    await browser.loadURL(origin)
+    await until(browser, "document.querySelector('a[href=\"/share/\"]') !== null")
+    await execute(browser, "document.querySelector('a[href=\"/share/\"]').click()")
+    await until(browser, "document.body.innerText.includes('Email me a sign-in code')")
+    await browser.loadURL(`${origin}/share/#vault/${id}`); await signIn(browser, 'child@example.com'); await until(browser, "document.body.innerText.includes('Accept invitation and open')"); await click(browser, 'Accept invitation and open'); await until(browser, "document.body.innerText.includes('Care directions')")
     assert.ok(!(await execute(browser, 'document.body.innerText')).includes('Private letter'))
     assert.equal(await execute(browser, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Edit record')"), false)
     assert.ok(await execute(browser, "document.querySelector('a[href^=\"everkeep://\"]') !== null"))

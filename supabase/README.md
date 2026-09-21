@@ -1,6 +1,6 @@
 # Everkeep sharing on Supabase + Resend
 
-Online sharing uses the existing Supabase project for Auth, Postgres, Edge Functions and private Storage. Resend remains the email provider, using a sender on your existing verified domain. No new email domain or Cloudflare sharing service is required. The browser portal is a static build that can be hosted under `/share/` on the existing website.
+Online sharing uses the existing Supabase project for Auth, Postgres, Edge Functions and private Storage. Resend remains the email provider, with `Everkeep <sharing@sova.baby>` selected as the sender. Verify `sova.baby` in Resend before enabling delivery. No new email domain or Cloudflare sharing service is required. The landing page and browser sharing app are one static website build, with sign-in and invitation acceptance at `/share/`.
 
 The local vault, sharing screens, selected-record permissions, collaboration, sync conflicts and file-saving flow are unchanged. No hosted vault data needs migrating from Cloudflare: that sharing service was never deployed. The unrelated legacy `workers/stripe-license` integration has not been changed.
 
@@ -8,7 +8,7 @@ The local vault, sharing screens, selected-record permissions, collaboration, sy
 
 1. Choose the existing project's reference and run `supabase link --project-ref YOUR_PROJECT_REF`. There is deliberately no production project reference checked into this repository.
 2. Review `supabase/migrations/20260921000000_sharing.sql`, then apply it with `supabase db push`. It creates the public `users`, `rate_limits`, `vaults`, `memberships`, `invitations`, and `audit` tables and a private `everkeep-shared-files` bucket. Supabase Auth tables remain in the separate `auth` schema. Row-level security is enabled, with no direct grants to browser `anon` or `authenticated` roles. The sharing API checks record-level authorization before decrypting content.
-3. In Supabase Auth, enable email sign-in and configure **Custom SMTP using the existing Resend account**. Use the host/port and credentials shown in the Resend SMTP settings, and the existing verified sender. Set email OTP length to six digits and expiry to ten minutes. The passwordless sign-in template must display `{{ .Token }}`; the app uses codes, not magic-link redirects.
+3. In Supabase Auth, enable email sign-in and configure **Custom SMTP using the existing Resend account**. Use host `smtp.resend.com`, port `465`, username `resend`, your Resend API key as the password, sender email `sharing@sova.baby`, and sender name `Everkeep`. Set email OTP length to six digits and expiry to ten minutes. The passwordless sign-in template must display `{{ .Token }}`; the app uses codes, not magic-link redirects.
 4. Set the following Edge Function secrets (see `.env.example`):
    - `SHARING_PUBLIC_URL`: the actual portal URL, including `/share` when hosted there.
    - `SHARING_FROM_EMAIL`: a sender on the existing verified Resend domain.
@@ -19,11 +19,11 @@ The local vault, sharing screens, selected-record permissions, collaboration, sy
 
    For local development copy `.env.example` to `.env.local` and supply your own values. For hosted deployment use `supabase secrets set --env-file supabase/.env.local`. Never commit that file. The runtime supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`; the server key never enters browser or desktop bundles.
 5. Deploy with `supabase functions deploy sharing`. `verify_jwt=false` is intentional because sign-in is public. The handler validates Supabase Auth on every protected request and checks ownership/membership before returning or changing information. CORS allows only the configured portal origin.
-6. Build the portal from the repository root:
+6. Build the combined website from the repository root:
    ```sh
-   VITE_SHARING_API_URL=https://PROJECT_REF.supabase.co/functions/v1/sharing SHARING_PORTAL_BASE=/share/ npm run sharing:build
+   VITE_SHARING_API_URL=https://PROJECT_REF.supabase.co/functions/v1/sharing npm run website:build
    ```
-   Serve `sharing/dist` at `/share/` on the existing website host. Alternatively use an existing subdomain and omit `SHARING_PORTAL_BASE`. Invitations use `SHARING_PUBLIC_URL`, not the API hostname. Allow connections to that Supabase project in the website CSP and avoid third-party scripts in the authenticated portal.
+   Publish `website/dist` as one deployment. Serve `/share/` from `share/index.html` and redirect `/share` to `/share/`. Set `SHARING_PUBLIC_URL` to `https://YOUR_WEBSITE/share`. Invitations use this website URL, not the API hostname. See `website/README.md` for routing and environment settings. Allow connections to that Supabase project in the website CSP and avoid third-party scripts in the authenticated page.
 7. Build the desktop app with:
    ```sh
    EVERKEEP_SHARING_URL=https://PROJECT_REF.supabase.co/functions/v1/sharing npm run build

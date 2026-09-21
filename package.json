@@ -31,7 +31,7 @@
     "test:packet": "npm run build && node scripts/test-packet.mjs",
     "test:record-pages": "npm run build && node scripts/test-record-pages.mjs",
     "test:electron": "npm run rebuild:electron && node scripts/test-electron.mjs",
-    "sharing:build": "vite build --config sharing/vite.config.ts",
+    "sharing:build": "npm run website:build",
     "sharing:dev": "supabase functions serve sharing --env-file supabase/.env.local",
     "test:sharing": "npm run build && npm run sharing:build && node scripts/test-sharing.mjs",
     "test:sharing:postgres": "node scripts/test-sharing-postgres.mjs",

@@ -21,7 +21,7 @@ const capabilities = [
   },
   {
     title: 'Review and share thoughtfully',
-    body: 'Spot stale items, export a readable report, and back up the whole vault when you are ready.'
+    body: 'Review your information and invite trusted people to view or help edit what you share, in their browser or the Everkeep app.'
   }
 ]
 
@@ -116,8 +116,8 @@ export default function App() {
           </h2>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-ivory-200/90">
             Everkeep stores everything in a local <span className="text-ivory-50">.everkeep</span> file
-            on your machine. Optional password protection encrypts sensitive fields. There is no
-            Everkeep cloud account and no sync service watching your data.
+            on your machine. Optional password protection encrypts sensitive fields. Online sharing is optional. When enabled, shared information and attachments are stored
+            in your Everkeep account so invited people can access them in a browser or the app.
           </p>
           <dl className="mt-14 grid gap-8 sm:grid-cols-3">
             {[
