@@ -1,3 +1,5 @@
+import { createAccessFile } from '../../shared/accessFile'
+import type { FileAccess } from '../../shared/sharing'
 import { SharingTransport } from '../../shared/sharingTransport'
 import { app, safeStorage } from 'electron'
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'fs'
@@ -37,7 +39,7 @@ export class SharingService {
       else rmSync(this.authFile, { force: true })
     }, saved)
   }
-  start() { if (this.timer) return; this.timer = setInterval(() => { if (this.account && !this.editing && this.vault.getStatus().session && !this.vault.getStatus().session?.isLocked && this.vault.getSharingLink()) void this.sync().catch(() => {}) }, 15000); this.timer.unref() }
+  start() { if (this.timer) return; this.timer = setInterval(() => { if (this.account && !this.editing && this.vault.getStatus().session && !this.vault.getStatus().session?.isLocked && this.vault.getSharingLink() && this.vault.getSharingLink()?.storage !== 'file') void this.sync().catch(() => {}) }, 15000); this.timer.unref() }
   stop() { if (this.timer) clearInterval(this.timer); this.generation++; this.transport.session = null; this.conflict = null }
   setEditing(value: boolean) { this.editing = value }
   getConflicts() { return this.conflict }
@@ -53,17 +55,49 @@ export class SharingService {
     const activeFile = session && !session.isLocked ? session.filePath : null
     if (this.activeFile !== activeFile) { this.activeFile = activeFile; this.conflict = null; this.error = null; this.state = 'local'; this.generation++ }
     const link = session && !session.isLocked ? this.vault.getSharingLink() : null
-    return { configured: Boolean(this.url), url: this.portalUrl, account: this.account, local: session && !session.isLocked ? { filePath: session.filePath, sharedId: link?.remoteId ?? null, ownsShared: Boolean(link && link.ownerId === this.account?.id), lastSyncedAt: link?.lastSyncedAt || null, state: link ? this.state === 'local' ? 'synced' : this.state : 'local', error: this.error } : null }
+    return { configured: Boolean(this.url), url: this.portalUrl, account: this.account, local: session && !session.isLocked ? { filePath: session.filePath, sharedId: link?.remoteId ?? null, storage: link?.storage || 'hosted', ownerEmail: link?.ownerEmail, ownsShared: Boolean(link && link.ownerId === this.account?.id), lastSyncedAt: link?.lastSyncedAt || null, state: link ? this.state === 'local' ? 'synced' : this.state : 'local', error: this.error } : null }
   }
   request<T>(path: string, method = 'GET', input?: unknown): Promise<T> { return this.transport.request<T>(path, method, input) }
   requestCode(email: string) { return this.request<{ challengeId: string }>('/auth/request', 'POST', { email }) }
   verifyCode(challengeId: string, email: string, code: string) { this.generation++; return this.transport.verify(challengeId, email, code) }
   async logout() { this.generation++; this.conflict = null; await this.transport.logout() }
+  async registerFile() {
+    await this.loadConfiguration()
+    this.status()
+    if (!this.account) throw new Error('Sign in to register ownership.')
+    const current = this.vault.getSharingLink()
+    if (current) {
+      if (current.serviceUrl !== this.url || current.ownerId !== this.account.id) throw new Error('Sign in as the registered owner.')
+      return current.remoteId
+    }
+    const session = this.vault.getStatus().session!
+    const generation = this.generation
+    const result = await this.request<{ id: string; owner: SharingAccount; storage: 'file' | 'hosted' }>('/file-vaults', 'POST', { sourceId: session.metadata.id, name: session.metadata.name })
+    if (generation !== this.generation || this.vault.getStatus().session?.filePath !== session.filePath || this.vault.getStatus().session?.isLocked) throw new Error('The active vault changed. Reopen it to finish registration.')
+    this.vault.saveSharingLink({ serviceUrl: this.url, remoteId: result.id, ownerId: result.owner.id, ownerEmail: result.owner.email, storage: result.storage, revision: 1, base: { name: session.metadata.name, records: [] }, lastSyncedAt: '' })
+    return result.id
+  }
+  async createSharedFile() {
+    const id = await this.registerFile(), session = this.vault.getStatus().session!, generation = this.generation
+    const snapshot = this.vault.getSharingSnapshot()
+    const result = await this.request<FileAccess & { packageId: string }>(`/vaults/${id}/file-packages`, 'POST', { recordIds: snapshot.records.map(record => record.id) })
+    const file = await createAccessFile(snapshot, id, result.packageId, result.owner, result.keys, async attachmentId => this.vault.getSharingAttachment(attachmentId))
+    if (generation !== this.generation || this.vault.getStatus().session?.filePath !== session.filePath || this.vault.getStatus().session?.isLocked) throw new Error('The active vault changed. Save again.')
+    return JSON.stringify(file)
+  }
   async publish() {
     await this.loadConfiguration()
     this.status()
     if (!this.account) throw new Error('Sign in before sharing.')
-    if (this.vault.getSharingLink()) { await this.sync(); return this.vault.getSharingLink()!.remoteId }
+    if (this.vault.getSharingLink()) {
+      const link = this.vault.getSharingLink()!
+      if (link.ownerId !== this.account.id || link.serviceUrl !== this.url) throw new Error('Sign in as the registered owner.')
+      if (link.storage === 'file') {
+        const remote = await this.request<SharedVaultView>(`/vaults/${link.remoteId}`)
+        this.vault.saveSharingLink({ ...link, storage: 'hosted', revision: remote.revision, base: remote })
+      }
+      await this.sync(); return link.remoteId
+    }
     const session = this.vault.getStatus().session!
     const source = this.vault.getSharingSnapshot(), generation = this.generation, accountId = this.account.id
     const created = await this.request<{ id: string; revision: number; existing: boolean }>('/vaults', 'POST', { sourceId: session.metadata.id, snapshot: source })
@@ -82,7 +116,7 @@ export class SharingService {
     const run = async () => {
       const session = this.vault.getStatus().session, account = this.account, generation = this.generation
       if (!session || session.isLocked || !account) return
-      const link = this.vault.getSharingLink(); if (!link) return
+      const link = this.vault.getSharingLink(); if (!link || link.storage === 'file') return
       if (link.serviceUrl !== this.url || link.ownerId !== account.id) throw new Error('This file belongs to another sharing account. Use Shared with me to access it.')
       const stillCurrent = () => {
         if (generation !== this.generation || this.vault.getStatus().session?.filePath !== session.filePath || this.vault.getStatus().session?.isLocked || this.editing) throw new Error('The active vault or editor changed. Sync will resume later.')

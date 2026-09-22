@@ -43,7 +43,9 @@ export function WelcomePage() {
       setPassword('')
       navigate('/')
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'PASSWORD_REQUIRED') {
+      if (err instanceof ApiError && err.code === 'SHARED_FILE') {
+        navigate(`/shared?vault=${encodeURIComponent(err.message)}`)
+      } else if (err instanceof ApiError && err.code === 'PASSWORD_REQUIRED') {
         setPasswordPromptPath(filePath)
         setError(null)
       } else if (err instanceof ApiError && err.code === 'PASSWORD_INCORRECT') {

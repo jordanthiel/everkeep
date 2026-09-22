@@ -6,3 +6,5 @@ CREATE TABLE invitations (request_id TEXT PRIMARY KEY, vault_id TEXT NOT NULL, e
 CREATE TABLE audit (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, record_id TEXT, created_at TEXT NOT NULL);
 CREATE INDEX memberships_email ON memberships(email, status);
 CREATE INDEX audit_vault ON audit(vault_id, created_at);
+CREATE TABLE file_packages (id TEXT PRIMARY KEY, vault_id TEXT NOT NULL REFERENCES vaults(id), keys_payload TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX file_packages_vault ON file_packages(vault_id);

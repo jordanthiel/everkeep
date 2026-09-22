@@ -1,3 +1,4 @@
+import { takeAccessFile } from '../files/AccessFileRequests'
 import { dialog, ipcMain, shell } from 'electron'
 import { writeFileSync } from 'fs'
 import { basename } from 'path'
@@ -34,6 +35,18 @@ export function registerSharingHandlers(vault: () => VaultService) {
   })
   ipcMain.handle('sharing:grant', (_event, value) => { const { id, input } = z.object({ id: idSchema, input: GrantSchema }).parse(value); return service().request(`/vaults/${id}/grant`, 'PATCH', input) })
   ipcMain.handle('sharing:revoke', (_event, value) => { const { id, email } = z.object({ id: idSchema, email: emailSchema }).parse(value); return service().request(`/vaults/${id}/revoke`, 'POST', { email }) })
+  ipcMain.handle('sharing:takeOpenFile', () => takeAccessFile())
+  ipcMain.handle('sharing:registerFile', () => service().registerFile())
+  ipcMain.handle('sharing:fileAccess', (_event, value) => { const { id, packageId } = z.object({ id: idSchema, packageId: idSchema }).parse(value); return service().request(`/vaults/${id}/file-packages/${packageId}`) })
+  ipcMain.handle('sharing:saveSharedFile', async () => {
+    const result = await dialog.showSaveDialog({ title: 'Save an access-controlled Everkeep file', defaultPath: 'shared vault.everkeep', filters: [{ name: 'Everkeep vault', extensions: ['everkeep'] }] })
+    if (result.canceled || !result.filePath) return null
+    const file = await service().createSharedFile()
+    const destination = result.filePath.toLowerCase().endsWith('.everkeep') ? result.filePath : `${result.filePath}.everkeep`
+    // Never replace the original or another existing file.
+    writeFileSync(destination, file, { mode: 0o600, flag: 'wx' })
+    return destination
+  })
   ipcMain.handle('sharing:publish', () => service().publish())
   ipcMain.handle('sharing:snapshot', () => vault().getSharingSnapshot())
   ipcMain.handle('sharing:sync', (_event, value) => service().sync(value === undefined ? undefined : z.object({ revision: z.number().int().positive(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/), choices: z.record(z.enum(['local', 'shared'])) }).parse(value)))

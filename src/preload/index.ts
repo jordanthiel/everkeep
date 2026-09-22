@@ -24,6 +24,10 @@ import type { AppUpdateStatus } from '../shared/types/appUpdate'
 
 const api: EverkeepApi = {
   sharing: {
+    takeOpenFile: () => ipcRenderer.invoke('sharing:takeOpenFile'),
+    registerFile: () => ipcRenderer.invoke('sharing:registerFile'),
+    saveSharedFile: () => ipcRenderer.invoke('sharing:saveSharedFile'),
+    fileAccess: (id, packageId) => ipcRenderer.invoke('sharing:fileAccess', { id, packageId }),
     status: () => ipcRenderer.invoke('sharing:status'),
     requestCode: (email) => ipcRenderer.invoke('sharing:requestCode', email),
     verifyCode: (challengeId, email, code) => ipcRenderer.invoke('sharing:verifyCode', { challengeId, email, code }),

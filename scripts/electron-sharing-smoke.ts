@@ -1,5 +1,6 @@
+import { queueAccessFile } from '../src/main/files/AccessFileRequests'
 import { authFixture } from '../tests/fixtures/sharing-auth'
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -48,7 +49,7 @@ app.whenReady().then(async () => {
   const desktop = new BrowserWindow({ width: 1280, height: 840, show: false, webPreferences: { preload: resolve('out/preload/index.js'), contextIsolation: true, sandbox: true } })
   const browser = new BrowserWindow({ width: 960, height: 640, show: false, webPreferences: { partition: 'sharing-recipient-test', contextIsolation: true, sandbox: true } })
   const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-  const execute = (window: BrowserWindow, source: string) => window.webContents.executeJavaScript(source)
+  const execute = async (window: BrowserWindow, source: string) => { try { return await window.webContents.executeJavaScript(source) } catch (error) { throw new Error(`Failed browser action: ${source.slice(0, 220)}\n${await window.webContents.executeJavaScript('document.body.innerText')}`, { cause: error }) } }
   async function until(window: BrowserWindow, source: string) { for (let i = 0; i < 160; i++) { if (await execute(window, source)) return; await pause(50) } throw new Error(`Timed out ${source}\n${await execute(window, 'document.body.innerText')}`) }
   async function click(window: BrowserWindow, label: string) { await execute(window, `(() => { const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Unavailable button ' + ${JSON.stringify(label)}); button.click() })()`); await pause(80) }
   async function fill(window: BrowserWindow, label: string, value: string) { await execute(window, `(() => { const item = [...document.querySelectorAll('label')].find(l => l.textContent.includes(${JSON.stringify(label)})); const field = item?.querySelector('input,textarea'); if (!field) throw new Error('Missing field ' + ${JSON.stringify(label)}); const type = field.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement; Object.getOwnPropertyDescriptor(type.prototype,'value').set.call(field,${JSON.stringify(value)}); field.dispatchEvent(new Event('input',{bubbles:true})) })()`); await pause(50) }
@@ -59,7 +60,7 @@ app.whenReady().then(async () => {
     const record = service.createEntry({ section: 'documents', title: 'Care directions', notes: 'Original directions' })
     service.createEntry({ section: 'letters', title: 'Private letter', notes: 'Not for this recipient' })
     await desktop.loadFile(resolve('out/renderer/index.html'), { hash: '/review' }); await signIn(desktop, 'owner@example.com')
-    await click(desktop, 'Enable online sharing'); await until(desktop, "document.body.innerText.includes('Who would you like to share with?')")
+    await click(desktop, 'Register file-based sharing'); await until(desktop, "document.body.innerText.includes('Who would you like to share with?')")
     const status = await execute(desktop, 'window.everkeep.sharing.status()'), id = status.local.sharedId
     assert.ok(id)
     await fill(desktop, 'Recipient email', 'child@example.com')
@@ -72,11 +73,39 @@ app.whenReady().then(async () => {
     await until(browser, "document.querySelector('a[href=\"/share/\"]') !== null")
     await execute(browser, "document.querySelector('a[href=\"/share/\"]').click()")
     await until(browser, "document.body.innerText.includes('Email me a sign-in code')")
-    await browser.loadURL(`${origin}/share/#vault/${id}`); await signIn(browser, 'child@example.com'); await until(browser, "document.body.innerText.includes('Accept invitation and open')"); await click(browser, 'Accept invitation and open'); await until(browser, "document.body.innerText.includes('Care directions')")
+    assert.equal(objects.size, 0, 'File registration and invitations must not upload contents')
+    const accessPath = join(root, 'recipient.everkeep')
+    const originalDialog = dialog.showSaveDialog
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath: accessPath })) as typeof dialog.showSaveDialog
+    try { await execute(desktop, 'window.everkeep.sharing.saveSharedFile()') } finally { dialog.showSaveDialog = originalDialog }
+    const accessFile = readFileSync(accessPath, 'utf8')
+    assert.ok(!accessFile.includes('Not for this recipient'))
+    assert.equal(objects.size, 0, 'Saving a recipient file must not upload contents')
+    await browser.loadURL(`${origin}/share/#vault/${id}`); await signIn(browser, 'child@example.com'); await until(browser, "document.body.innerText.includes('Accept invitation and open')"); await click(browser, 'Accept invitation and open')
+    await execute(browser, `(() => { const input = document.querySelector('input[type=file]'); const transfer = new DataTransfer(); transfer.items.add(new File([${JSON.stringify(accessFile)}], 'recipient.everkeep')); input.files = transfer.files; input.dispatchEvent(new Event('change', {bubbles:true})) })()`)
+    await until(browser, "document.body.innerText.includes('Care directions')")
     assert.ok(!(await execute(browser, 'document.body.innerText')).includes('Private letter'))
     assert.equal(await execute(browser, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Edit record')"), false)
     assert.ok(await execute(browser, "document.querySelector('a[href^=\"everkeep://\"]') !== null"))
     assert.ok(!(await execute(browser, 'document.cookie')).includes('everkeep_session'))
+    await execute(desktop, `window.everkeep.sharing.grant(${JSON.stringify(id)}, {email:'child@example.com',scope:{type:'selected',recordIds:[${JSON.stringify(record.id)}]},canEdit:true})`)
+    // Re-select the file to refresh its grant immediately without caching decrypted data.
+    await execute(browser, `(() => { const input = document.querySelector('input[type=file]'); const transfer = new DataTransfer(); transfer.items.add(new File([${JSON.stringify(accessFile)}], 'recipient.everkeep')); input.files = transfer.files; input.dispatchEvent(new Event('change', {bubbles:true})) })()`)
+    await click(browser, 'Back to vaults'); await click(browser, 'Open vault')
+    await until(browser, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Edit record')")
+    await click(browser, 'Edit record'); await fill(browser, 'Notes', 'A change to this file only'); await click(browser, 'Save changes')
+    await until(browser, "document.body.innerText.includes('Save an updated Everkeep file to keep them')")
+    assert.equal(objects.size, 0)
+    assert.equal(service.listEntries('documents')[0].notes, 'Original directions')
+    const savedCopy = join(root, 'collaborator-copy.everkeep')
+    const completed = new Promise<void>((resolve, reject) => browser.webContents.session.once('will-download', (_event, item) => { item.setSavePath(savedCopy); item.once('done', (_event, state) => state === 'completed' ? resolve() : reject(new Error(state))) }))
+    await click(browser, 'Save updated Everkeep file'); await completed
+    assert.ok(readFileSync(savedCopy, 'utf8').includes('everkeep-access'))
+    await click(browser, 'Close file')
+    await click(desktop, 'Enable online sharing')
+    await until(desktop, "document.body.innerText.includes('Synchronized')")
+    await browser.reload()
+    await until(browser, "document.body.innerText.includes('Care directions')")
     await execute(desktop, `window.everkeep.sharing.grant(${JSON.stringify(id)}, {email:'child@example.com',scope:{type:'selected',recordIds:[${JSON.stringify(record.id)}]},canEdit:true})`)
     await browser.reload(); await until(browser, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Edit record')")
     await click(browser, 'Edit record'); await fill(browser, 'Notes', 'Collaborator update'); failSaves = true; await click(browser, 'Save changes'); await until(browser, "document.body.innerText.includes('Simulated connection failure')"); assert.ok(await execute(browser, "[...document.querySelectorAll('textarea')].some(t=>t.value==='Collaborator update')")); failSaves = false; await click(browser, 'Save changes'); await until(browser, "document.body.innerText.includes('Changes saved to the shared vault')")
@@ -86,8 +115,9 @@ app.whenReady().then(async () => {
     await execute(desktop, 'window.everkeep.sharing.sync().catch(()=>{})'); const conflicts = await execute(desktop, 'window.everkeep.sharing.conflicts()'); assert.equal(conflicts.items.length, 1)
     await execute(desktop, `window.everkeep.sharing.sync(${JSON.stringify({ revision: conflicts.revision, fingerprint: conflicts.fingerprint, choices: { [record.id]: 'shared' } })})`); assert.equal(service.listEntries('documents')[0].notes, 'Remote edit')
     for (const width of [1280, 960]) { browser.setSize(width, width === 960 ? 640 : 840); await pause(150); writeFileSync(resolve(`.everkeep-temp/sharing-recipient-${width}.png`), (await browser.webContents.capturePage()).toPNG()); assert.ok(await execute(browser, 'document.documentElement.scrollWidth <= innerWidth')) }
+    assert.equal(queueAccessFile(accessPath), id)
     // The app uses the same recipient permissions, without requiring any local vault.
-    await execute(desktop, "window.everkeep.sharing.logout()"); service.closeVault(); await desktop.loadFile(resolve('out/renderer/index.html'), { hash: `/shared?vault=${id}` }); await signIn(desktop, 'child@example.com'); await until(desktop, "document.body.innerText.includes('Remote edit')"); assert.ok(!(await execute(desktop, 'document.body.innerText')).includes('Private letter'))
+    await execute(desktop, "window.everkeep.sharing.logout()"); service.closeVault(); await desktop.loadFile(resolve('out/renderer/index.html'), { hash: `/shared?vault=${id}` }); await signIn(desktop, 'child@example.com'); await until(desktop, "document.body.innerText.includes('Original directions')"); assert.ok(!(await execute(desktop, 'document.body.innerText')).includes('Private letter'))
     const owners = db.prepare('SELECT id FROM users WHERE email=?').get('owner@example.com') as { id: string }; assert.ok(owners.id)
     db.prepare("UPDATE memberships SET status='revoked' WHERE email='child@example.com'").run()
     await browser.reload(); await until(browser, "document.body.innerText.includes('No invitations for this email')"); assert.ok(!(await execute(browser, 'document.body.innerText')).includes('Remote edit'))

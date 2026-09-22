@@ -1,3 +1,4 @@
+import { queueAccessFile } from '../files/AccessFileRequests'
 import { registerSharingHandlers } from './sharingHandlers'
 import { SavePacketDraftSchema } from '../../shared/schemas/packet'
 import { BrowserWindow, dialog, ipcMain } from 'electron'
@@ -259,6 +260,8 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.vault.open, async (_event, raw) => {
     try {
       const input = OpenVaultSchema.parse(raw)
+      const sharedId = queueAccessFile(input.filePath)
+      if (sharedId) return { ok: false, error: { code: 'SHARED_FILE', message: sharedId } }
       return ok(service.openVault(input))
     } catch (error) {
       return fromError(error)

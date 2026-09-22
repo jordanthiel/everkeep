@@ -1,3 +1,5 @@
+import { createAccessFile, openRecord } from '../src/shared/accessFile'
+import type { FileAccess } from '../src/shared/sharing'
 import { authFixture } from './fixtures/sharing-auth'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import Database from 'better-sqlite3'
@@ -118,5 +120,55 @@ describe('three-way vault merge', () => {
     local.records[0].fields.notes.value = 'local'; remote.records[1].fields.notes.value = 'remote'
     const result = mergeSnapshots(base, local, remote); expect(result.conflicts).toEqual([]); expect(result.snapshot.records.map(record => record.fields.notes.value)).toEqual(['local', 'remote'])
     remote.records[0].fields.notes.value = 'also remote'; expect(mergeSnapshots(base, local, remote).conflicts).toEqual([base.records[0].id])
+  })
+})
+
+describe('file-based vault permissions', () => {
+  it('registers ownership without contents, releases only permitted keys, and retains permissions when hosting is enabled', async () => {
+    const owner = await signIn('owner@example.com'), child = await signIn('child@example.com'), stranger = await signIn('stranger@example.com')
+    const sourceId = randomUUID(), data = snapshot()
+    const attachmentId = randomUUID(), attachmentBytes = new TextEncoder().encode('Confidential attachment bytes')
+    data.records[0].attachments = [{ id: attachmentId, name: 'private.txt', size: attachmentBytes.length, checksum: createHash('sha256').update(attachmentBytes).digest('hex') }]
+    const registered = await call('/file-vaults', owner, 'POST', { sourceId, name: data.name })
+    expect(registered.status).toBe(201)
+    const { id, owner: identity } = await registered.json()
+    expect(objects.size).toBe(0)
+    expect((await call('/file-vaults', child, 'POST', { sourceId, name: data.name })).status).toBe(403)
+    expect((await call('/file-vaults', owner, 'POST', { sourceId, name: data.name, snapshot: data })).status).toBe(400)
+    const prepared = await call(`/vaults/${id}/file-packages`, owner, 'POST', { recordIds: data.records.map(record => record.id) })
+    expect(prepared.status).toBe(200)
+    const pkg = await prepared.json() as FileAccess & { packageId: string }
+    const file = await createAccessFile(data, id, pkg.packageId, identity, pkg.keys, async () => attachmentBytes)
+    expect(JSON.stringify(file)).not.toContain('Private letter')
+    expect(JSON.stringify(file)).not.toContain('Confidential attachment bytes')
+    expect(JSON.stringify(db.prepare('SELECT * FROM file_packages').all())).not.toContain(pkg.keys[data.records[0].id])
+    expect(objects.size).toBe(0)
+    const grant = { email: 'child@example.com', scope: { type: 'selected', recordIds: [data.records[0].id] }, canEdit: false }
+    const path = `/vaults/${id}/file-packages/${pkg.packageId}`
+    expect((await call(path, stranger)).status).toBe(403)
+    expect((await call(`/vaults/${id}/invite`, owner, 'POST', { ...grant, requestId: randomUUID(), password: 'local-password' })).status).toBe(400)
+    expect((await call(`/vaults/${id}/invite`, owner, 'POST', { ...grant, requestId: randomUUID() })).status).toBe(200)
+    expect(mails.at(-1)!.text).toContain('Download the access-controlled .everkeep file')
+    expect((await call(path, child)).status).toBe(403)
+    await call(`/vaults/${id}/accept`, child, 'POST', {})
+    const permitted = await (await call(path, child)).json() as FileAccess
+    expect(Object.keys(permitted.keys)).toEqual([data.records[0].id])
+    const opened = await openRecord(file, data.records[0].id, permitted)
+    expect(opened.record.title).toBe('Care notes')
+    expect(atob(opened.attachments[attachmentId])).toBe('Confidential attachment bytes')
+    await expect(openRecord(file, data.records[1].id, permitted)).rejects.toThrow('not available')
+    await expect(openRecord({ ...file, packageId: randomUUID() }, data.records[0].id, permitted)).rejects.toThrow()
+    await expect(openRecord({ ...file, owner: { ...identity, id: randomUUID() } }, data.records[0].id, permitted)).rejects.toThrow('owner')
+    expect((await call(`/vaults/${id}/file-packages`, child, 'POST', { recordIds: [] })).status).toBe(403)
+    expect((await call(`/vaults/${id}/grant`, child, 'PATCH', grant)).status).toBe(403)
+    expect((await call(`/vaults/${id}/grant`, owner, 'PATCH', { ...grant, canEdit: true })).status).toBe(200)
+    expect((await (await call(path, child)).json()).role).toBe('collaborator')
+    expect((await call(`/vaults/${id}/snapshot`, owner, 'PUT', { baseRevision: 1, snapshot: data })).status).toBe(200)
+    expect(objects.size).toBe(1)
+    const hosted = await (await call(`/vaults/${id}`, child)).json()
+    expect(hosted.storage).toBe('hosted'); expect(hosted.records).toHaveLength(1)
+    expect((await call(path, child)).status).toBe(200)
+    await call(`/vaults/${id}/revoke`, owner, 'POST', { email: grant.email })
+    expect((await call(path, child)).status).toBe(403)
   })
 })

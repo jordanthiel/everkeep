@@ -1,3 +1,5 @@
+import { queueAccessFile } from './files/AccessFileRequests'
+import { resolve } from 'path'
 import { BackupOpenRequests } from './files/BackupOpenRequests'
 import { IpcChannels } from '../shared/types/ipc'
 import { app, BrowserWindow, ipcMain } from 'electron'
@@ -44,8 +46,13 @@ function notifyBackupRequest() {
   window.focus()
   window.webContents.send(IpcChannels.app.backupOpenRequested)
 }
+function receiveAccessFile(path: string, cwd = process.cwd()) {
+  try { const id = queueAccessFile(resolve(cwd, path)); if (id) { receiveSharingLink(`everkeep://shared/${id}`); return true } } catch { /* Leave malformed or missing files for explicit Open to report. */ }
+  return false
+}
 app.on('open-file', (event, path) => {
   event.preventDefault()
+  if (receiveAccessFile(path)) return
   if (requests.add(path)) notifyBackupRequest()
 })
 
@@ -53,9 +60,11 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   process.argv.forEach(receiveSharingLink)
+  process.argv.slice(app.isPackaged ? 1 : 2).forEach(path => receiveAccessFile(path))
   requests.addArguments(process.argv.slice(app.isPackaged ? 1 : 2), process.cwd())
   app.on('second-instance', (_event, argv, cwd) => {
     argv.forEach(receiveSharingLink)
+    argv.slice(app.isPackaged ? 1 : 2).forEach(path => receiveAccessFile(path, cwd))
     requests.addArguments(argv.slice(app.isPackaged ? 1 : 2), cwd)
     notifyBackupRequest()
   })

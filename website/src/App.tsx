@@ -13,7 +13,7 @@ const capabilities = [
   },
   {
     title: 'Attach the real files',
-    body: 'Keep scans and PDFs with the entries they belong to. Attachments stay with your saved vault and are included when you enable online sharing.'
+    body: 'Keep scans and PDFs with the entries they belong to. Attachments stay with your saved vault. Share an access-controlled file yourself, or optionally enable hosted access.'
   },
   {
     title: 'Leave clear instructions',
@@ -116,8 +116,7 @@ export default function App() {
           </h2>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-ivory-200/90">
             Everkeep stores everything in a local <span className="text-ivory-50">.everkeep</span> file
-            on your machine. Optional password protection encrypts sensitive fields. Online sharing is optional. When enabled, shared information and attachments are stored
-            in your Everkeep account so invited people can access them in a browser or the app.
+            on your machine. Optional password protection encrypts sensitive fields. File-based sharing keeps contents in a file you distribute yourself; Everkeep verifies email and manages access keys. Hosted storage is optional and uploads shared information and attachments for access without a file.
           </p>
           <dl className="mt-14 grid gap-8 sm:grid-cols-3">
             {[

@@ -62,6 +62,7 @@ async function access(env: SharingEnv, user: User, id: string, pending = false) 
   return { vault, role: member.can_edit ? 'collaborator' as const : 'viewer' as const, scope: JSON.parse(member.scope) as ShareScope }
 }
 async function snapshot(env: SharingEnv, vault: Vault): Promise<SharedSnapshot> {
+  if (!vault.payload) return { name: vault.name, records: [] }
   const object = await env.FILES.get(vault.payload)
   if (!object) throw new HttpError(503, 'Shared information is temporarily unavailable.')
   return SharedSnapshotSchema.parse(JSON.parse(new TextDecoder().decode(await decrypt(env, await object.arrayBuffer(), vault.id))))
@@ -121,8 +122,22 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
         return json({})
       }
       if (path === '/api/vaults' && request.method === 'GET') {
-        const rows = await env.DB.prepare("SELECT v.id,v.name,v.owner_id,v.updated_at,m.can_edit,m.status FROM vaults v LEFT JOIN memberships m ON m.vault_id = v.id AND m.email = ? WHERE v.owner_id = ? OR m.status IN ('active','pending')").bind(user.email, user.id).all<Vault & { can_edit: number; status: string }>()
-        return json(rows.results.map(row => ({ id: row.id, name: row.name, role: row.owner_id === user.id ? 'owner' : row.can_edit ? 'collaborator' : 'viewer', status: row.owner_id === user.id ? 'active' : row.status, updatedAt: row.updated_at })))
+        const rows = await env.DB.prepare("SELECT v.id,v.name,v.owner_id,v.payload,v.updated_at,m.can_edit,m.status FROM vaults v LEFT JOIN memberships m ON m.vault_id = v.id AND m.email = ? WHERE v.owner_id = ? OR m.status IN ('active','pending')").bind(user.email, user.id).all<Vault & { can_edit: number; status: string }>()
+        return json(rows.results.map(row => ({ id: row.id, name: row.name, role: row.owner_id === user.id ? 'owner' : row.can_edit ? 'collaborator' : 'viewer', status: row.owner_id === user.id ? 'active' : row.status, updatedAt: row.updated_at, storage: row.payload ? 'hosted' : 'file' })))
+      }
+      if (path === '/api/file-vaults' && request.method === 'POST') {
+        const input = z.object({ sourceId: idSchema, name: z.string().min(1).max(200) }).strict().parse(await body(request, 2000))
+        await limit(env, `create:${user.id}`, 20, 86400000)
+        const existing = await env.DB.prepare('SELECT * FROM vaults WHERE source_id=?').bind(input.sourceId).first<Vault>()
+        if (existing) {
+          if (existing.owner_id !== user.id) throw new HttpError(403, 'This vault already has an owner.')
+          return json({ id: existing.id, owner: user, storage: existing.payload ? 'hosted' : 'file' })
+        }
+        const id = crypto.randomUUID()
+        try { await env.DB.prepare('INSERT INTO vaults VALUES(?,?,?,?,?,?,?)').bind(id, input.sourceId, user.id, input.name, 1, '', stamp()).run() }
+        catch { throw new HttpError(409, 'Registration changed. Please retry.') }
+        await audit(env, id, user.email, 'registered file ownership')
+        return json({ id, owner: user, storage: 'file' }, 201)
       }
       if (path === '/api/vaults' && request.method === 'POST') {
         const input = z.object({ sourceId: idSchema, snapshot: SharedSnapshotSchema }).parse(await body(request))
@@ -139,13 +154,34 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
       if (!match) throw new HttpError(404, 'Not found')
       const id = idSchema.parse(match[1]), tail = match[2] || ''
       const { vault, role, scope } = await access(env, user, id, tail === 'accept')
+      if (tail === 'file-packages' && request.method === 'POST') {
+        requireOwner(role)
+        const { recordIds } = z.object({ recordIds: z.array(idSchema).max(10000).refine(ids => new Set(ids).size === ids.length) }).strict().parse(await body(request, 500000))
+        await limit(env, `file-package:${user.id}`, 100, 86400000)
+        const packageId = crypto.randomUUID(), keys: Record<string, string> = {}
+        for (const recordId of recordIds) keys[recordId] = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+        const sealed = await encrypt(env, encoder.encode(JSON.stringify(keys)), `${id}:${packageId}`)
+        const payload = btoa(Array.from(sealed, b => String.fromCharCode(b)).join(''))
+        await env.DB.prepare('INSERT INTO file_packages(id,vault_id,keys_payload,created_at) VALUES(?,?,?,?)').bind(packageId, id, payload, stamp()).run()
+        return json({ packageId, owner: user, keys, role: 'owner', scope: { type: 'all' } })
+      }
+      const packageMatch = tail.match(/^file-packages\/([a-f0-9-]{36})$/)
+      if (packageMatch && request.method === 'GET') {
+        const packageId = idSchema.parse(packageMatch[1])
+        const row = await env.DB.prepare('SELECT keys_payload FROM file_packages WHERE id=? AND vault_id=?').bind(packageId, id).first<{ keys_payload: string }>()
+        if (!row) throw new HttpError(404, 'This file is not registered with this vault.')
+        const sealed = Uint8Array.from(atob(row.keys_payload), c => c.charCodeAt(0))
+        const keys = JSON.parse(new TextDecoder().decode(await decrypt(env, sealed.buffer, `${id}:${packageId}`))) as Record<string, string>
+        const owner = await env.DB.prepare('SELECT id,email FROM users WHERE id=?').bind(vault.owner_id).first<User>()
+        return json({ actor: user, owner, role, scope, keys: Object.fromEntries(Object.entries(keys).filter(([recordId]) => allowed(scope, recordId))) })
+      }
       if (tail === 'accept' && request.method === 'POST') {
         await env.DB.prepare("UPDATE memberships SET status='active',updated_at=? WHERE vault_id=? AND email=? AND status='pending'").bind(stamp(), id, user.email).run()
         return json({})
       }
       if (!tail && request.method === 'GET') {
         const data = await snapshot(env, vault)
-        return json({ id, revision: vault.revision, name: data.name, role, scope, updatedAt: vault.updated_at, records: visibleRecords(data, scope) })
+        return json({ id, revision: vault.revision, name: data.name, role, scope, updatedAt: vault.updated_at, records: visibleRecords(data, scope), storage: vault.payload ? 'hosted' : 'file' })
       }
       if (tail === 'snapshot' && request.method === 'PUT') {
         requireOwner(role)
@@ -161,7 +197,7 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
         const payload = await storeSnapshot(env, id, input.snapshot), updatedAt = stamp()
         const changed = await env.DB.prepare('UPDATE vaults SET payload=?,name=?,revision=revision+1,updated_at=? WHERE id=? AND owner_id=? AND revision=?').bind(payload, input.snapshot.name, updatedAt, id, user.id, input.baseRevision).run()
         if (!changed.meta.changes) { await env.FILES.delete(payload); throw new HttpError(409, 'Another edit arrived. Sync again.') }
-        await env.FILES.delete(vault.payload)
+        if (vault.payload) await env.FILES.delete(vault.payload)
         await audit(env, id, user.email, 'synchronized')
         return json({ revision: vault.revision + 1, updatedAt })
       }
@@ -173,9 +209,10 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
       if (tail === 'invite' && request.method === 'POST') {
         requireOwner(role)
         const input = InvitationSchema.parse(await body(request, 200000))
+        if (!vault.payload && input.password) throw new HttpError(400, 'File access uses verified email, not the original vault password.')
         if (input.email === user.email) throw new HttpError(400, 'You already own this vault.')
         const data = await snapshot(env, vault)
-        if (input.scope.type === 'selected' && input.scope.recordIds.some(recordId => !data.records.some(record => record.id === recordId))) throw new HttpError(400, 'One of the selected records is no longer available.')
+        if (vault.payload && input.scope.type === 'selected' && input.scope.recordIds.some(recordId => !data.records.some(record => record.id === recordId))) throw new HttpError(400, 'One of the selected records is no longer available.')
         const fingerprint = await digest(`${env.AUTH_SECRET}:${JSON.stringify(input)}`)
         const prior = await env.DB.prepare('SELECT * FROM invitations WHERE request_id=?').bind(input.requestId).first<{ vault_id: string; digest: string; status: string }>()
         if (prior && (prior.vault_id !== id || prior.digest !== fingerprint)) throw new HttpError(409, 'Use a new invitation request after changing its contents.')
@@ -187,7 +224,7 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
         ])
         try {
           const owner = user.email
-          await mail(input.email, `${owner} shared ${vault.name} with you`, invitationText(vault.name, owner, `${env.PUBLIC_URL.replace(/\/$/, '')}/#vault/${id}`, input), input.requestId)
+          await mail(input.email, `${owner} shared ${vault.name} with you`, invitationText(vault.name, owner, `${env.PUBLIC_URL.replace(/\/$/, '')}/#vault/${id}`, input, vault.payload ? 'hosted' : 'file'), input.requestId)
           await env.DB.batch([env.DB.prepare("UPDATE invitations SET status='sent' WHERE request_id=?").bind(input.requestId), env.DB.prepare("UPDATE memberships SET email_status='sent' WHERE vault_id=? AND email=?").bind(id, input.email)])
         } catch (error) { await env.DB.prepare("UPDATE memberships SET email_status='failed' WHERE vault_id=? AND email=?").bind(id, input.email).run(); throw error }
         await audit(env, id, user.email, `invited ${input.email}`)
@@ -196,7 +233,7 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
       if (tail === 'grant' && request.method === 'PATCH') {
         requireOwner(role); const input = GrantSchema.parse(await body(request, 200000))
         const data = await snapshot(env, vault)
-        if (input.scope.type === 'selected' && input.scope.recordIds.some(recordId => !data.records.some(record => record.id === recordId))) throw new HttpError(400, 'A selected record is unavailable.')
+        if (vault.payload && input.scope.type === 'selected' && input.scope.recordIds.some(recordId => !data.records.some(record => record.id === recordId))) throw new HttpError(400, 'A selected record is unavailable.')
         const result = await env.DB.prepare("UPDATE memberships SET scope=?,can_edit=?,updated_at=? WHERE vault_id=? AND email=? AND status != 'revoked'").bind(JSON.stringify(input.scope), input.canEdit ? 1 : 0, stamp(), id, input.email).run()
         if (!result.meta.changes) throw new HttpError(404, 'Invite this person before changing their access.')
         await audit(env, id, user.email, `changed access for ${input.email}`); return json({})

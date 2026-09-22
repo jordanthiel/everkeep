@@ -99,7 +99,7 @@ function SharingSyncRefresh() {
 function SharingRequests() {
   const navigate = useNavigate()
   useEffect(() => {
-    const consume = async () => { const id = await getEverkeepApi().sharing?.getOpenRequest(); if (id) navigate(`/shared?vault=${id}`) }
+    const consume = async () => { const id = await getEverkeepApi().sharing?.getOpenRequest(); if (id) navigate(`/shared?vault=${id}&request=${Date.now()}`) }
     void consume().catch(() => {})
     return getEverkeepApi().sharing?.onOpenRequest(() => void consume().catch(() => {}))
   }, [navigate])

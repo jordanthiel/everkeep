@@ -12,7 +12,7 @@ Serve `/share/` from `share/index.html` (including on reload), redirect `/share`
 
 The authenticated page has its own HTML entry, no marketing font requests, and a no-referrer policy. Allow connections to your Supabase endpoint in the host CSP; do not inject third-party analytics into `/share/`. Never put Resend keys or Supabase service secrets in `VITE_` variables.
 
-Browser access supports the existing shared-vault viewing and collaboration features. Creating local vaults and the complete guided editor remain in the desktop app.
+Browser access supports hosted shared vaults and locally selected access-controlled `.everkeep` files. File contents stay on the device; email verification retrieves only permitted record keys. File edits require saving an updated file and do not synchronize. Creating local vaults and the complete guided editor remain in the desktop app.
 
 ## Download links
 

@@ -18,11 +18,12 @@ export type ShareGrant = z.infer<typeof GrantSchema>
 export type ShareInvitation = z.infer<typeof InvitationSchema>
 export interface SharingAccount { id: string; email: string }
 export interface SharedMembership extends ShareGrant { status: 'pending' | 'active' | 'revoked'; emailStatus: 'pending' | 'sent' | 'failed'; updatedAt: string }
-export interface SharedVaultSummary { id: string; name: string; role: 'owner' | 'viewer' | 'collaborator'; status: 'active' | 'pending'; updatedAt: string }
-export interface SharedVaultView extends SharedSnapshot { id: string; revision: number; role: 'owner' | 'viewer' | 'collaborator'; scope: ShareScope; updatedAt: string }
+export interface SharedVaultSummary { id: string; name: string; role: 'owner' | 'viewer' | 'collaborator'; status: 'active' | 'pending'; updatedAt: string; storage?: 'file' | 'hosted' }
+export interface SharedVaultView extends SharedSnapshot { storage?: 'file' | 'hosted'; id: string; revision: number; role: 'owner' | 'viewer' | 'collaborator'; scope: ShareScope; updatedAt: string }
 export interface RecordEdit { baseVersion: number; values: Record<string, string> }
-export interface SharingStatus { configured: boolean; url: string; account: SharingAccount | null; local: { filePath: string; sharedId: string | null; ownsShared?: boolean; lastSyncedAt: string | null; state: 'local' | 'synced' | 'syncing' | 'offline' | 'conflict'; error: string | null } | null }
+export interface SharingStatus { configured: boolean; url: string; account: SharingAccount | null; local: { filePath: string; sharedId: string | null; ownsShared?: boolean; storage?: 'file' | 'hosted'; ownerEmail?: string; lastSyncedAt: string | null; state: 'local' | 'synced' | 'syncing' | 'offline' | 'conflict'; error: string | null } | null }
 export interface SharingClient {
+  fileAccess?(id: string, packageId: string): Promise<FileAccess>
   status(): Promise<SharingStatus>
   requestCode(email: string): Promise<{ challengeId: string }>
   verifyCode(challengeId: string, email: string, code: string): Promise<SharingAccount>
@@ -57,12 +58,18 @@ export function mergeSnapshots(base: SharedSnapshot, local: SharedSnapshot, remo
   if (local.name !== base.name && remote.name !== base.name && local.name !== remote.name) conflicts.push('name')
   return { snapshot: { name: local.name === base.name ? remote.name : local.name, records }, conflicts }
 }
-export function invitationText(vaultName: string, owner: string, url: string, input: ShareInvitation): string {
+export function invitationText(vaultName: string, owner: string, url: string, input: ShareInvitation, storage: 'file' | 'hosted' = 'hosted'): string {
+  if (storage === 'file') return `${owner} invited you to ${vaultName}.\n\nAccess: ${input.scope.type === 'all' ? 'Entire vault' : `${input.scope.recordIds.length} selected record(s)`}. ${input.canEdit ? 'You may edit your own file copy. Changes do not synchronize automatically.' : 'View only.'}\n\nDownload the access-controlled .everkeep file from the location supplied by the owner. Open ${url}, verify this email address, accept the invitation, and choose Open an Everkeep file. You can also open the file from Shared with me in the desktop app.\n\nEverkeep stores permissions and protected encryption keys, not this file’s contents. An internet connection is required to verify access. Revocation cannot erase information already opened or copied.\n${input.instructions ? `\n${input.instructions}\n` : ''}`
+
   return `${owner} invited you to ${vaultName}.\n\nAccess: ${input.scope.type === 'all' ? 'Entire vault' : `${input.scope.recordIds.length} selected record(s)`}. ${input.canEdit ? 'You may edit the information shared with you. You cannot manage access.' : 'View only. Editing is not enabled.'}\n\nOpen ${url}\nVerify this email address to access the vault in your browser. You can also choose “Open in Everkeep” on that page after installing the app.\n\nThis link shows the latest synchronized information. The owner can change or revoke your access.\n${input.instructions ? `\n${input.instructions}\n` : ''}${input.password ? `\nPassword for the owner's local vault file: ${input.password}\nThis is not required for the online link.\n` : ''}`
 }
 
 export interface SyncConflicts { revision: number; fingerprint: string; items: Array<{ id: string; local: string; shared: string }> }
 export interface DesktopSharingApi extends SharingClient {
+  takeOpenFile(): Promise<string | null>
+  registerFile(): Promise<string>
+  saveSharedFile(): Promise<string | null>
+  fileAccess(id: string, packageId: string): Promise<FileAccess>
   publish(): Promise<string>
   snapshot(): Promise<SharedSnapshot>
   sync(resolution?: { revision: number; fingerprint: string; choices: Record<string, 'local' | 'shared'> }): Promise<void>
@@ -73,3 +80,5 @@ export interface DesktopSharingApi extends SharingClient {
   getOpenRequest(): Promise<string | null>
   onOpenRequest(listener: () => void): () => void
 }
+
+export interface FileAccess { actor?: SharingAccount; owner: SharingAccount; role: 'owner' | 'viewer' | 'collaborator'; scope: ShareScope; keys: Record<string, string> }

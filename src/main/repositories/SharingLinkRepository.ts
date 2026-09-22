@@ -1,6 +1,6 @@
 import { withTransaction, type VaultDatabase } from '../database/connection'
 import type { SharedSnapshot } from '../../shared/sharing'
-export interface SharingLink { serviceUrl: string; remoteId: string; ownerId: string; revision: number; base: SharedSnapshot; lastSyncedAt: string; uploaded?: string[] }
+export interface SharingLink { storage?: 'file' | 'hosted'; ownerEmail?: string; serviceUrl: string; remoteId: string; ownerId: string; revision: number; base: SharedSnapshot; lastSyncedAt: string; uploaded?: string[] }
 export class SharingLinkRepository {
   constructor(private readonly db: VaultDatabase) {}
   get(): SharingLink | null { const row = this.db.prepare('SELECT data_json FROM sharing_link WHERE id=1').get() as { data_json: string } | undefined; return row ? JSON.parse(row.data_json) : null }

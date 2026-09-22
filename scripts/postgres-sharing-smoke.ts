@@ -18,6 +18,7 @@ try {
   // Stand-ins for roles and bucket metadata already provisioned in a Supabase project.
   await sql.unsafe('CREATE ROLE anon; CREATE ROLE authenticated; CREATE SCHEMA storage; CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean,file_size_limit bigint);')
   await sql.unsafe(readFileSync('supabase/migrations/20260921000000_sharing.sql', 'utf8'))
+  await sql.unsafe(readFileSync('supabase/migrations/20260922000000_file_access.sql', 'utf8'))
   const database = createPostgresDatabase(sql as unknown as TransactionalSql)
   await database.prepare('INSERT INTO rate_limits(key,count,expires) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count = CASE WHEN rate_limits.expires < ? THEN 1 ELSE rate_limits.count+1 END, expires = CASE WHEN rate_limits.expires < ? THEN ? ELSE rate_limits.expires END RETURNING count').bind('probe', Date.now()+10000, Date.now(), Date.now(), Date.now()+10000).first()
   const objects = new Map<string, Uint8Array>()
@@ -51,5 +52,15 @@ try {
   // Batched membership/invitation changes must roll back together.
   await assert.rejects(database.batch([database.prepare('INSERT INTO users(id,email) VALUES(?,?)').bind('rollback', 'rollback@example.com'), database.prepare('INSERT INTO users(id,email) VALUES(?,?)').bind('rollback', 'duplicate@example.com')]))
   assert.equal(await database.prepare('SELECT * FROM users WHERE id=?').bind('rollback').first(), null)
+  const registered = await call('/file-vaults', owner, 'POST', { sourceId: randomUUID(), name: 'File-only vault' })
+  assert.equal(registered.status, 201)
+  const fileId = registered.data.id
+  const pkg = await call(`/vaults/${fileId}/file-packages`, owner, 'POST', { recordIds: [recordId, privateId] })
+  assert.equal(pkg.status, 200)
+  assert.equal((await call(`/vaults/${fileId}/invite`, owner, 'POST', { ...grant, requestId: randomUUID() })).status, 200)
+  assert.equal((await call(`/vaults/${fileId}/accept`, recipient, 'POST', {})).status, 200)
+  const keys = await call(`/vaults/${fileId}/file-packages/${pkg.data.packageId}`, recipient)
+  assert.deepEqual(Object.keys(keys.data.keys), [recordId])
+  for (const role of ['anon', 'authenticated']) await assert.rejects(sql.begin(async transaction => { await transaction.unsafe(`SET LOCAL ROLE ${role}`); await transaction.unsafe('SELECT * FROM file_packages') }), error => (error as { code: string }).code === '42501')
   console.log('Postgres 17: real migration, SQL adapter, atomic transactions, scoped reads/edits, revision conflicts, revocation, and direct-client RLS denial passed.')
 } finally { if (sql) await sql.end(); try { execFileSync('docker', ['rm', '-f', name], { stdio: 'pipe' }) } catch { /* Container already stopped. */ } }

@@ -38,7 +38,7 @@ describe('local shared vault persistence', () => {
   it('preserves encrypted sharing metadata across lock, restart and a file copy without switching the active file', async () => {
     const { service, path, root } = setup('test-password')
     service.createPerson({ fullName: 'Private identity' })
-    const link = { serviceUrl: 'https://share.example.com', remoteId: randomUUID(), ownerId: randomUUID(), revision: 3, base: service.getSharingSnapshot(), lastSyncedAt: new Date().toISOString() }
+    const link = { storage: 'file' as const, ownerEmail: 'owner@example.com', serviceUrl: 'https://share.example.com', remoteId: randomUUID(), ownerId: randomUUID(), revision: 3, base: service.getSharingSnapshot(), lastSyncedAt: new Date().toISOString() }
     service.saveSharingLink(link); expect(readFileSync(path).includes(Buffer.from('Private identity'))).toBe(false)
     service.lockVault(); service.unlockVault('test-password'); expect(service.getSharingLink()).toEqual(link)
     expect(() => service.verifySharingPassword('wrong')).toThrow(); expect(() => service.verifySharingPassword('test-password')).not.toThrow()

@@ -2,12 +2,12 @@
 
 Online sharing uses the existing Supabase project for Auth, Postgres, Edge Functions and private Storage. Resend remains the email provider, with `Everkeep <sharing@sova.baby>` selected as the sender. Verify `sova.baby` in Resend before enabling delivery. No new email domain or Cloudflare sharing service is required. The landing page and browser sharing app are one static website build, with sign-in and invitation acceptance at `/share/`.
 
-The local vault, sharing screens, selected-record permissions, collaboration, sync conflicts and file-saving flow are unchanged. No hosted vault data needs migrating from Cloudflare: that sharing service was never deployed. The unrelated legacy `workers/stripe-license` integration has not been changed.
+Saving a local vault does not require an account or upload. Review & share now registers file-based ownership first; hosting is a separate explicit action. No hosted vault data needs migrating from Cloudflare: that sharing service was never deployed. The unrelated legacy `workers/stripe-license` integration has not been changed.
 
 ## Connect the existing project
 
 1. Choose the existing project's reference and run `supabase link --project-ref YOUR_PROJECT_REF`. There is deliberately no production project reference checked into this repository.
-2. Review `supabase/migrations/20260921000000_sharing.sql`, then apply it with `supabase db push`. It creates the public `users`, `rate_limits`, `vaults`, `memberships`, `invitations`, and `audit` tables and a private `everkeep-shared-files` bucket. Supabase Auth tables remain in the separate `auth` schema. Row-level security is enabled, with no direct grants to browser `anon` or `authenticated` roles. The sharing API checks record-level authorization before decrypting content.
+2. Review `supabase/migrations/20260921000000_sharing.sql`, and `supabase/migrations/20260922000000_file_access.sql`, then apply them with `supabase db push`. It creates the public `users`, `rate_limits`, `vaults`, `memberships`, `invitations`, and `audit` tables and a private `everkeep-shared-files` bucket. Supabase Auth tables remain in the separate `auth` schema. Row-level security is enabled, with no direct grants to browser `anon` or `authenticated` roles. The sharing API checks record-level authorization before decrypting content.
 3. In Supabase Auth, enable email sign-in and configure **Custom SMTP using the existing Resend account**. Use host `smtp.resend.com`, port `465`, username `resend`, your Resend API key as the password, sender email `sharing@sova.baby`, and sender name `Everkeep`. Set email OTP length to six digits and expiry to ten minutes. The passwordless sign-in template must display `{{ .Token }}`; the app uses codes, not magic-link redirects.
 4. Set the following Edge Function secrets (see `.env.example`):
    - `SHARING_PUBLIC_URL`: the actual portal URL, including `/share` when hosted there.
@@ -30,6 +30,20 @@ The local vault, sharing screens, selected-record permissions, collaboration, sy
    ```
    Use the same variable for the normal packaging command. The desktop learns the portal URL from `/api/config`. Unconfigured builds keep local saving and exports available.
 8. Verify with accounts you control: email sign-in, invitations, browser/app opening, collaborator edits, source sync, session renewal and revocation. Automated tests never send real emails.
+
+## File-based access and optional hosting
+
+1. Keep saving the original local vault normally, without an account or upload.
+2. In Review & share, sign in and choose **Register file-based sharing**. The original file stores its service URL, vault registration ID, verified owner ID/email, and storage mode. The service stores the vault ID/name, owner identity, and grants; no records are uploaded.
+3. Choose **Save a file for recipients**. This creates an `everkeep-access` version 1 `.everkeep` file, containing individually AES-256-GCM-encrypted records and attachments. Every saved package gets new random per-record keys. The service stores these keys encrypted with `SHARING_DATA_KEY` in the RLS-protected `file_packages` table, not in Storage. Authenticated additional data binds each encrypted record to its vault, file package, owner ID, and record ID. Shared files are limited to 200 MB.
+4. Distribute that file yourself (for example, Google Drive), select recipients/scopes/editing permission, and put the download location in the invitation instructions. Recipients sign in, accept, and select the downloaded file in the combined website or desktop Shared with me screen. Desktop Open and OS file-open also recognize the access-controlled format. Files never supply an API URL; only the configured trusted service receives authentication.
+5. Email verification releases only the permitted record keys. A local password cannot bypass these permissions. Personal original SQLite/password-protected copies retain their existing behavior and are clearly distinguished from access-controlled recipient files.
+6. Collaborators edit their file copy and explicitly download **Save updated Everkeep file**. This preserves encrypted records outside their scope. It does not update the sender or hosted vault, and Everkeep does not automatically import or trust edits returned by another person. File attribution is not independently verified. View-only access prevents editing through the app, but cannot prevent someone who has decrypted information from changing or copying it outside the app.
+7. **Enable online sharing** uploads the current contents and starts existing synchronization, using the same registration and grants. Existing hosted vaults continue to work; existing distributed files can still be opened with current grants. This version does not remove already-hosted data or automatically convert old personal copies.
+
+An internet connection and functioning key service are required to open recipient files. No file contents or record keys are persisted in browser storage. Revocation prevents future key retrieval; it cannot revoke information or keys already obtained. This is service-managed key escrow, not end-to-end encryption. Preserve both the database (including old `file_packages` rows) and `SHARING_DATA_KEY`: deleting either can make distributed files unreadable.
+
+Deploy the additive migration before deploying the updated sharing function, then redeploy the website and rebuild desktop clients. No new environment variables are required. Older desktop builds do not understand the new access-controlled file format.
 
 ## Security and behavior
 
