@@ -44,6 +44,39 @@ Windows installers built on Apple Silicon can look fine but fail after install w
 Windows machine or the `Release Windows` GitHub Action, then confirm
 `release/win-unpacked/Everkeep.exe` exists before uploading the `.exe`.
 
+### Trusted macOS releases
+
+macOS downloads must be signed with a **Developer ID Application** certificate
+and notarized by Apple. An Apple Development certificate does not qualify for
+distribution outside the App Store. This requires Apple Developer Program membership.
+
+Configure these GitHub Actions repository secrets before running `Release macOS`:
+
+- `MAC_CSC_LINK`: the base64-encoded `.p12` export of the Developer ID Application
+  certificate **and its private key** from Keychain Access.
+- `MAC_CSC_KEY_PASSWORD`: the password protecting that `.p12` export.
+- `APPLE_ID`: the Apple account email used for notarization.
+- `APPLE_APP_SPECIFIC_PASSWORD`: an app-specific password for that account.
+- `APPLE_TEAM_ID`: the developer team ID that owns the certificate.
+
+Keep the certificate, private key, and passwords out of the repository. See
+[Apple's Developer ID setup](https://developer.apple.com/developer-id/).
+
+The `Release macOS` workflow runs on `v*` tags or manually and builds Apple Silicon
+and Intel DMG/ZIP downloads, including `latest-mac.yml` for updates. It enables
+the hardened runtime, signs the app, submits it to Apple, and staples the returned
+notarization ticket. Signature, ticket, and Gatekeeper checks must pass before
+the app is packaged and uploaded to GitHub Releases.
+
+For local `npm run dist:mac`, provide the same Apple environment variables and
+either install the Developer ID Application identity in your keychain or set
+`CSC_LINK` and `CSC_KEY_PASSWORD` to the export and its password. Packaging fails
+if signing or notarization is unavailable; use `npm run dev` for development.
+
+Existing unsigned downloads are not repaired by this change. Bump the version,
+build a signed/notarized release, and publish it with its updater files. Users
+whose current copy cannot launch must download the new DMG.
+
 ## App updates
 
 Installed copies check [GitHub Releases](https://github.com/jordanthiel/everkeep/releases/latest)

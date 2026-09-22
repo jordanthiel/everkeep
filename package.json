@@ -1,6 +1,6 @@
 {
   "name": "everkeep",
-  "version": "0.1.0",
+  "version": "0.4.1",
   "description": "Modern local-first estate & life information organizer",
   "main": "./out/main/index.js",
   "author": "Everkeep",
@@ -100,11 +100,17 @@
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
+      "forceCodeSigning": true,
+      "hardenedRuntime": true,
+      "notarize": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "target": [
         "dmg",
         "zip"
       ]
     },
+    "afterSign": "scripts/verify-mac-signing.cjs",
     "win": {
       "icon": "build/icon.ico",
       "executableName": "Everkeep",
