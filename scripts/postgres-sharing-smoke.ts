@@ -28,6 +28,9 @@ try {
     return { status: response.status, data: await response.json() }
   }
   async function signIn(email: string) { const challenge = await call('/auth/request', '', 'POST', { email }); assert.equal(challenge.status, 200); const verified = await call('/auth/verify', '', 'POST', { email, code: '123456', challengeId: challenge.data.challengeId }); assert.equal(verified.status, 200); return verified.data.token as string }
+  const config = await call('/config')
+  assert.equal(config.status, 200)
+  assert.ok(config.data.capabilities.includes('file-sharing-v1'))
   const owner = await signIn('owner@example.com'), recipient = await signIn('recipient@example.com'), recordId = randomUUID(), privateId = randomUUID()
   const record = (id: string) => ({ id, kind: 'entries', section: 'Notes', title: 'Directions', version: 1, attachments: [], fields: { notes: { label: 'Notes', value: 'Private directions', editable: true } } })
   const published = await call('/vaults', owner, 'POST', { sourceId: randomUUID(), snapshot: { name: 'Postgres vault', records: [record(recordId), record(privateId)] } }); assert.equal(published.status, 201)

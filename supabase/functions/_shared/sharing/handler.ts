@@ -96,7 +96,7 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
       if (!env.AUTH_SECRET || env.AUTH_SECRET.length < 32 || !env.DATA_KEY) throw new HttpError(503, 'Sharing service is not configured.')
       const origin = request.headers.get('Origin')
       if (origin && origin !== new URL(env.PUBLIC_URL).origin) throw new HttpError(403, 'Origin not allowed.')
-      if (path === '/api/config' && request.method === 'GET') return json({ portalUrl: env.PUBLIC_URL })
+      if (path === '/api/config' && request.method === 'GET') return json({ portalUrl: env.PUBLIC_URL, capabilities: ['file-sharing-v1'] })
       if (path === '/api/auth/request' && request.method === 'POST') {
         const { email } = z.object({ email: emailSchema }).parse(await body(request, 2000))
         await limit(env, `email:${await digest(email)}`, 5, 15 * 60000)
