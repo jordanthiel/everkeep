@@ -101,7 +101,7 @@ npm run website:dev
 cd website && npm install && npm run dev
 ```
 
-Configure download URLs with `website/.env` (see `website/.env.example`).
+The landing page automatically reads download URLs and the version from the latest published GitHub release; no per-release Vercel environment changes are needed. See `website/README.md`.
 
 ## Architecture
 

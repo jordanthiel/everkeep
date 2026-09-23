@@ -16,4 +16,8 @@ Browser access supports hosted shared vaults and locally selected access-control
 
 ## Download links
 
-Set `VITE_DOWNLOAD_MAC`, `VITE_DOWNLOAD_WIN`, `VITE_RELEASES_URL`, and `VITE_APP_VERSION` in the website build environment.
+The landing page reads the latest published stable release from the public GitHub API for `jordanthiel/everkeep` on load and every five minutes while visible. Publishing a release as **Latest** updates the displayed version and download links without a Vercel environment change or redeployment. Drafts and prereleases are excluded.
+
+Publish the completed Mac and Windows artifacts before making the release public. Mac links select the uploaded `Everkeep-VERSION-arm64.dmg` (Apple Silicon) and `Everkeep-VERSION.dmg` (Intel); Windows uses `Everkeep-win-x64.exe`. Missing artifacts and API failures fall back to GitHub's latest-release page instead of a stale or guessed installer URL. The unauthenticated GitHub API can be rate limited; no API token is shipped to visitors.
+
+`VITE_DOWNLOAD_MAC`, `VITE_DOWNLOAD_WIN`, `VITE_RELEASES_URL`, and `VITE_APP_VERSION` are no longer used and can be removed from Vercel. Keep `VITE_SHARING_API_URL` and any payment/license settings.

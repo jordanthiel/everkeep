@@ -4,7 +4,7 @@ import { EverkeepMark } from './components/EverkeepMark'
 import { HeroScene } from './components/HeroScene'
 import { SiteHeader } from './components/SiteHeader'
 import { checkout } from './config/checkout'
-import { downloads } from './config/downloads'
+import { useDownloads } from './hooks/useDownloads'
 
 const capabilities = [
   {
@@ -52,6 +52,11 @@ export default function App() {
     return <BuySuccess />
   }
 
+  return <LandingPage />
+}
+
+function LandingPage() {
+  const downloads = useDownloads()
   return (
     <div id="top" className="min-h-screen">
       <SiteHeader />
@@ -69,9 +74,9 @@ export default function App() {
               could not explain it yourself.
             </p>
             <div className="mt-8 animate-fade-up-delay-2">
-              <DownloadButtons />
+              <DownloadButtons downloads={downloads} />
               <p className="mt-3 text-sm text-warm-500">
-                macOS &amp; Windows · v{downloads.version} · free to try · runs on your computer
+                macOS &amp; Windows{downloads.version ? ` · v${downloads.version}` : ''} · free to try · runs on your computer
               </p>
             </div>
           </div>
@@ -207,7 +212,7 @@ export default function App() {
               with {checkout.freeEntryCap} entries — your information is saved locally until you choose online sharing.
             </p>
             <div className="mt-8">
-              <DownloadButtons />
+              <DownloadButtons downloads={downloads} />
             </div>
             <p className="mt-4 text-sm text-warm-500">
               Looking for an older build?{' '}

@@ -1,21 +1,22 @@
 import { useMemo } from 'react'
 import { cn } from '../lib/utils'
-import { detectPreferredPlatform, downloads } from '../config/downloads'
+import { detectPreferredPlatform, type Downloads } from '../config/downloads'
 
 interface DownloadButtonsProps {
+  downloads: Downloads
   className?: string
   size?: 'md' | 'lg'
 }
 
-export function DownloadButtons({ className, size = 'lg' }: DownloadButtonsProps) {
+export function DownloadButtons({ downloads, className, size = 'lg' }: DownloadButtonsProps) {
   const preferred = useMemo(() => detectPreferredPlatform(), [])
   const primaryHref = preferred === 'mac' ? downloads.mac : downloads.win
   const secondaryHref = preferred === 'mac' ? downloads.win : downloads.mac
-  const primaryLabel = preferred === 'mac' ? 'Download for Mac' : 'Download for Windows'
-  const secondaryLabel = preferred === 'mac' ? 'Download for Windows' : 'Download for Mac'
+  const primaryLabel = preferred === 'mac' ? 'Mac · Apple Silicon' : 'Download for Windows'
+  const secondaryLabel = preferred === 'mac' ? 'Download for Windows' : 'Mac · Apple Silicon'
 
   return (
-    <div className={cn('flex flex-col gap-3 sm:flex-row sm:items-center', className)}>
+    <div className={cn('flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center', className)}>
       <a
         href={primaryHref}
         className={cn(
@@ -33,6 +34,9 @@ export function DownloadButtons({ className, size = 'lg' }: DownloadButtonsProps
         )}
       >
         {secondaryLabel}
+      </a>
+      <a href={downloads.macIntel} className="text-sm text-charcoal-700 underline underline-offset-4 hover:text-forest-700">
+        Mac · Intel
       </a>
     </div>
   )
