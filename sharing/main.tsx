@@ -4,7 +4,7 @@ import { FileVaultApp } from '../src/sharing/FileVaultApp'
 import type { SharingClient } from '../src/shared/sharing'
 import { SharingTransport } from '../src/shared/sharingTransport'
 // Supabase Edge Function base URL; the portal itself can stay on the existing website.
-const endpoint = (import.meta.env.VITE_SHARING_API_URL || (['localhost', '127.0.0.1'].includes(location.hostname) ? location.origin : '')).replace(/\/$/, '')
+const endpoint = ((import.meta.env.VITE_SHARING_ENDPOINT || import.meta.env.VITE_SHARING_API_URL)?.trim() || (['localhost', '127.0.0.1'].includes(location.hostname) ? location.origin : '')).replace(/\/$/, '')
 const storageKey = `everkeep-sharing-session:${endpoint}`
 let saved: unknown
 try { saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null') } catch { /* Invalid sessions require sign-in again. */ }
@@ -30,5 +30,17 @@ const client: SharingClient = {
 // An unsigned-in visitor should see the email form, not an authentication error.
 const rawStatus = client.status
 client.status = async () => { try { return await rawStatus() } catch { return { configured: Boolean(endpoint), url: `${location.origin}${import.meta.env.BASE_URL.replace(/\/$/, '')}/share`, account: null, local: null } } }
-const match = location.hash.match(/^#vault\/([a-f0-9-]{36})$/)
-createRoot(document.getElementById('root')!).render(<React.StrictMode><nav aria-label="Everkeep website" style={{ padding: '16px 24px' }}><a href="/">← Everkeep home</a></nav><FileVaultApp client={client} initialVaultId={match?.[1]} /></React.StrictMode>)
+async function start() {
+  const [vaultHash, invitationQuery = ''] = location.hash.split('?')
+  const match = vaultHash.match(/^#vault\/([a-f0-9-]{36})$/)
+  const tokenHash = new URLSearchParams(invitationQuery).get('token_hash')
+  // Remove the credential from browser history before any requests or rendering.
+  if (tokenHash) history.replaceState(null, '', `${location.pathname}${location.search}${vaultHash}`)
+  let linkError = ''
+  if (tokenHash && match) {
+    transport.setSession(null)
+    try { await transport.verifyLink(tokenHash) } catch { linkError = 'This sign-in link has expired or was already used. Request an email code below to continue.' }
+  }
+  createRoot(document.getElementById('root')!).render(<React.StrictMode><nav aria-label="Everkeep website" style={{ padding: '16px 24px' }}><a href="/">← Everkeep home</a></nav><>{linkError && <p role="alert" style={{ padding: 24 }}>{linkError}</p>}<FileVaultApp client={client} initialVaultId={match?.[1]} /></></React.StrictMode>)
+}
+void start()

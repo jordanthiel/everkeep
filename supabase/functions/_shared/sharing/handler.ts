@@ -111,6 +111,12 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
         await env.DB.prepare('INSERT INTO users(id,email) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET email=excluded.email').bind(session.account.id, session.account.email).run()
         return json(session)
       }
+      if (path === '/api/auth/link' && request.method === 'POST') {
+        const { tokenHash } = z.object({ tokenHash: z.string().min(32).max(256) }).strict().parse(await body(request, 1000))
+        const session = await env.AUTH.verifyEmailLink(tokenHash)
+        await env.DB.prepare('INSERT INTO users(id,email) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET email=excluded.email').bind(session.account.id, session.account.email).run()
+        return json(session)
+      }
       if (path === '/api/auth/refresh' && request.method === 'POST') {
         const { refreshToken } = z.object({ refreshToken: z.string().min(1).max(4096) }).parse(await body(request, 6000))
         return json(await env.AUTH.refresh(refreshToken))
@@ -224,7 +230,9 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
         ])
         try {
           const owner = user.email
-          await mail(input.email, `${owner} shared ${vault.name} with you`, invitationText(vault.name, owner, `${env.PUBLIC_URL.replace(/\/$/, '')}/#vault/${id}`, input, vault.payload ? 'hosted' : 'file'), input.requestId)
+          const tokenHash = await env.AUTH.createEmailLink(input.email)
+          const invitationUrl = `${env.PUBLIC_URL.replace(/\/$/, '')}/#vault/${id}?token_hash=${encodeURIComponent(tokenHash)}`
+          await mail(input.email, `${owner} shared ${vault.name} with you`, invitationText(vault.name, owner, invitationUrl, input, vault.payload ? 'hosted' : 'file') + '\n\nThis personal sign-in link expires and can be used once. Do not forward it. If it expires, use email sign-in on the portal.', `${input.requestId}:${await digest(tokenHash)}`)
           await env.DB.batch([env.DB.prepare("UPDATE invitations SET status='sent' WHERE request_id=?").bind(input.requestId), env.DB.prepare("UPDATE memberships SET email_status='sent' WHERE vault_id=? AND email=?").bind(id, input.email)])
         } catch (error) { await env.DB.prepare("UPDATE memberships SET email_status='failed' WHERE vault_id=? AND email=?").bind(id, input.email).run(); throw error }
         await audit(env, id, user.email, `invited ${input.email}`)

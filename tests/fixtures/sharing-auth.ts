@@ -8,7 +8,10 @@ export function authFixture(mail: (to: string, text: string) => void): SharingAu
     const session = { token: randomUUID(), refreshToken: randomUUID(), expiresAt: Date.now() + 3600000, account: { id: users.get(email)!, email } }
     sessions.set(session.token, session); refreshes.set(session.refreshToken, session); return session
   }
+  const links = new Map<string, string>()
   return {
+    createEmailLink: async email => { const token = randomUUID(); links.set(token, email); return token },
+    verifyEmailLink: async token => { const email = links.get(token); if (!email) throw new AuthError(401, 'Expired sign-in link.'); links.delete(token); return issue(email) },
     requestCode: async email => { const code = '123456'; codes.set(email, { code, attempts: 0 }); mail(email, `Your sign-in code is ${code}.`) },
     verifyCode: async (email, code) => { const pending = codes.get(email); if (!pending || pending.attempts++ >= 5 || code !== pending.code) throw new AuthError(401, 'Incorrect or expired code.'); codes.delete(email); return issue(email) },
     refresh: async token => { const previous = refreshes.get(token); if (!previous) throw new AuthError(401, 'Session expired.'); refreshes.delete(token); return issue(previous.account.email) },

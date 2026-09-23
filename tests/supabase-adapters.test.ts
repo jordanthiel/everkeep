@@ -58,3 +58,23 @@ describe('sharing session renewal', () => {
     await expect(pending).rejects.toThrow('account changed'); expect(transport.session).toBeNull()
   })
 })
+
+it('generates a server-only email link and exchanges its token for a verified session', async () => {
+  const account = { id: randomUUID(), email: 'recipient@example.com', email_confirmed_at: new Date().toISOString() }
+  const calls: { url: string; init?: RequestInit }[] = []
+  const fetcher: typeof fetch = async (url, init) => {
+    calls.push({ url: String(url), init })
+    return Response.json(String(url).includes('generate_link') ? { hashed_token: 'a'.repeat(64) } : { access_token: 'access', refresh_token: 'refresh', expires_in: 3600, user: account })
+  }
+  const auth = createSupabaseAuth('https://project.supabase.co', 'anon', fetcher, 'server-only')
+  const hash = await auth.createEmailLink(account.email)
+  expect(JSON.parse(calls[0].init!.body as string)).toEqual({ type: 'magiclink', email: account.email })
+  expect((await auth.verifyEmailLink(hash)).account.email).toBe(account.email)
+  expect(JSON.parse(calls[1].init!.body as string)).toEqual({ token_hash: hash, type: 'email' })
+  expect(JSON.stringify(calls[1])).not.toContain('server-only')
+})
+
+it('explains non-JSON service errors without exposing raw server content', async () => {
+  const transport = new SharingTransport('https://api.example', () => {}, null, async () => new Response('The page could not be found', { status: 404 }))
+  await expect(transport.request('/auth/request', 'POST', { email: 'recipient@example.com' })).rejects.toThrow('[404] The sharing service returned an unexpected response.')
+})

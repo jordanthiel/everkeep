@@ -13,13 +13,18 @@ export class SharingTransport {
     if (!this.url) throw new Error('Online sharing is not configured for this build.')
     return this.fetcher(`${this.url}/api${path}`, { method, headers: { 'Content-Type': 'application/json', ...(this.session ? { Authorization: `Bearer ${this.session.token}` } : {}) }, body: input === undefined ? undefined : JSON.stringify(input), signal: AbortSignal.timeout(30000) })
   }
+  private async readJson(response: Response) {
+    try { return await response.json() } catch {
+      throw new SharingRequestError('The sharing service returned an unexpected response. Please try again later.', response.status >= 400 ? response.status : 502)
+    }
+  }
   private async refresh() {
     if (this.refreshing) return this.refreshing
     const generation = this.generation, token = this.session?.refreshToken
     if (!token) throw new SharingRequestError('Sign in to continue.', 401)
     this.refreshing = (async () => {
       const response = await this.raw('/auth/refresh', 'POST', { refreshToken: token })
-      const result = await response.json()
+      const result = await this.readJson(response)
       if (generation !== this.generation) throw new Error('Your sharing account changed.')
       if (!response.ok) { if (response.status === 401) this.setSession(null); throw new SharingRequestError(result.error || 'Unable to renew your session.', response.status) }
       this.setSession(result)
@@ -40,7 +45,7 @@ export class SharingTransport {
   }
   async request<T>(path: string, method = 'GET', input?: unknown): Promise<T> {
     const response = path.startsWith('/auth/') ? await this.raw(path, method, input) : await this.fetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: input === undefined ? undefined : JSON.stringify(input), signal: AbortSignal.timeout(30000) })
-    const result = await response.json()
+    const result = await this.readJson(response)
     if (!response.ok) throw new SharingRequestError(result.error || 'Sharing request failed.', response.status)
     return result as T
   }
@@ -49,6 +54,13 @@ export class SharingTransport {
     const result = await this.request<SharingSession>('/auth/verify', 'POST', { challengeId, email, code })
     if (generation !== this.generation) throw new Error('Your sharing account changed.')
     this.setSession(result); return result.account
+  }
+  async verifyLink(tokenHash: string) {
+    const generation = this.generation
+    const result = await this.request<SharingSession>('/auth/link', 'POST', { tokenHash })
+    if (generation !== this.generation) throw new Error('Your sharing account changed.')
+    this.setSession(result)
+    return result.account
   }
   async logout() { try { if (this.session) await this.request('/auth/logout', 'POST', {}) } finally { this.setSession(null) } }
 }

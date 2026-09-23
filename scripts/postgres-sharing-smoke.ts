@@ -22,7 +22,8 @@ try {
   const database = createPostgresDatabase(sql as unknown as TransactionalSql)
   await database.prepare('INSERT INTO rate_limits(key,count,expires) VALUES(?,1,?) ON CONFLICT(key) DO UPDATE SET count = CASE WHEN rate_limits.expires < ? THEN 1 ELSE rate_limits.count+1 END, expires = CASE WHEN rate_limits.expires < ? THEN ? ELSE rate_limits.expires END RETURNING count').bind('probe', Date.now()+10000, Date.now(), Date.now(), Date.now()+10000).first()
   const objects = new Map<string, Uint8Array>()
-  const handler = createSharingHandler({ DB: database, AUTH: authFixture(() => {}), FILES: { put: async (key, value) => { objects.set(key, typeof value === 'string' ? new TextEncoder().encode(value) : new Uint8Array(value)) }, get: async key => objects.has(key) ? { arrayBuffer: async () => new Uint8Array(objects.get(key)!).buffer } : null, delete: async key => { objects.delete(key) } }, PUBLIC_URL: 'https://everkeep.example/share', FROM_EMAIL: 'sharing@example.com', RESEND_API_KEY: '', AUTH_SECRET: 'test-secret'.repeat(5), DATA_KEY: Buffer.alloc(32, 9).toString('base64') }, { mail: async () => {} })
+  const sentMail: { to: string; text: string }[] = []
+  const handler = createSharingHandler({ DB: database, AUTH: authFixture(() => {}), FILES: { put: async (key, value) => { objects.set(key, typeof value === 'string' ? new TextEncoder().encode(value) : new Uint8Array(value)) }, get: async key => objects.has(key) ? { arrayBuffer: async () => new Uint8Array(objects.get(key)!).buffer } : null, delete: async key => { objects.delete(key) } }, PUBLIC_URL: 'https://everkeep.example/share', FROM_EMAIL: 'sharing@example.com', RESEND_API_KEY: '', AUTH_SECRET: 'test-secret'.repeat(5), DATA_KEY: Buffer.alloc(32, 9).toString('base64') }, { mail: async (to, _subject, text) => { sentMail.push({ to, text }) } })
   async function call(path: string, token = '', method = 'GET', body?: unknown) {
     const response = await handler(new Request(`https://project.supabase.co/api${path}`, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) }))
     return { status: response.status, data: await response.json() }
@@ -37,6 +38,12 @@ try {
   const id = published.data.id
   const grant = { email: 'recipient@example.com', scope: { type: 'selected', recordIds: [recordId] }, canEdit: true }
   assert.equal((await call(`/vaults/${id}/invite`, owner, 'POST', { ...grant, requestId: randomUUID() })).status, 200)
+  const tokenHash = sentMail.at(-1)!.text.match(/token_hash=([a-zA-Z0-9%-]+)/)![1]
+  const linked = await call('/auth/link', '', 'POST', { tokenHash: decodeURIComponent(tokenHash) })
+  assert.equal(linked.status, 200)
+  assert.equal(linked.data.account.email, 'recipient@example.com')
+  assert.equal((await call('/auth/link', '', 'POST', { tokenHash })).status, 401)
+  assert.equal((await call('/auth/link', '', 'POST', { tokenHash: randomUUID() })).status, 401)
   assert.equal((await call(`/vaults/${id}/accept`, recipient, 'POST', {})).status, 200)
   assert.equal((await call(`/vaults/${id}`, recipient)).data.records.length, 1)
   assert.equal((await call(`/vaults/${id}/records/${recordId}`, recipient, 'PATCH', { baseVersion: 1, values: { notes: 'Edited on Supabase' } })).status, 200)

@@ -8,7 +8,7 @@ const sql = postgres(Deno.env.get('SHARING_DATABASE_URL') || required('SUPABASE_
 const handler = createSharingHandler({
   DB: createPostgresDatabase(sql as unknown as TransactionalSql),
   FILES: createSupabaseBucket(url, required('SUPABASE_SERVICE_ROLE_KEY')),
-  AUTH: createSupabaseAuth(url, required('SUPABASE_ANON_KEY')),
+  AUTH: createSupabaseAuth(url, required('SUPABASE_ANON_KEY'), fetch, required('SUPABASE_SERVICE_ROLE_KEY')),
   PUBLIC_URL: required('SHARING_PUBLIC_URL'), FROM_EMAIL: required('SHARING_FROM_EMAIL'),
   RESEND_API_KEY: required('RESEND_API_KEY'), DATA_KEY: required('SHARING_DATA_KEY'), AUTH_SECRET: required('SHARING_AUTH_SECRET')
 })
