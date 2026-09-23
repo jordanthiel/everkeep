@@ -16,6 +16,8 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+    env:
+      EVERKEEP_SHARING_URL: ${{ vars.EVERKEEP_SHARING_URL }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,7 +35,6 @@ jobs:
       - name: Build and publish Windows x64 installer
         run: npm run build && node scripts/verify-release-sharing.mjs --built && npx electron-builder --win --x64 --publish always
         env:
-      EVERKEEP_SHARING_URL: ${{ vars.EVERKEEP_SHARING_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts
