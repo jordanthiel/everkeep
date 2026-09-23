@@ -44,6 +44,16 @@ Windows installers built on Apple Silicon can look fine but fail after install w
 Windows machine or the `Release Windows` GitHub Action, then confirm
 `release/win-unpacked/Everkeep.exe` exists before uploading the `.exe`.
 
+### Release sharing configuration
+
+Set the GitHub Actions **repository variable** `EVERKEEP_SHARING_URL` to the same
+public Supabase function URL used by the website's `VITE_SHARING_API_URL`.
+Both desktop release workflows embed this URL at build time. They fail if it is
+missing, the service configuration is unavailable, or the built main-process
+bundle does not contain it. This is a public endpoint, never a service-role key.
+Changing a Vercel variable does not configure the desktop installers; a new
+app build is required. Local builds remain optionally unconfigured.
+
 ### Trusted macOS releases
 
 macOS downloads must be signed with a **Developer ID Application** certificate

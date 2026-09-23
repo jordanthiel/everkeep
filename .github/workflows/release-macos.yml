@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: write
     env:
+      EVERKEEP_SHARING_URL: ${{ vars.EVERKEEP_SHARING_URL }}
       CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
       CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -35,13 +36,16 @@ jobs:
           node-version: '22'
           cache: npm
 
+      - name: Require production sharing configuration
+        run: node scripts/verify-release-sharing.mjs
+
       - name: Install dependencies
         run: npm ci
 
       # One invocation merges both architectures into latest-mac.yml.
       # afterSign validates each notarized app before packaging/uploading it.
       - name: Build, sign, notarize, verify, and publish macOS installers
-        run: npm run build && npx electron-builder --mac --arm64 --x64 --publish always
+        run: npm run build && node scripts/verify-release-sharing.mjs --built && npx electron-builder --mac --arm64 --x64 --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
