@@ -11,6 +11,7 @@ function download(bytes: BlobPart, name: string) {
 export function FileVaultApp({ client, initialVaultId, desktop = false, onEditingChange, takeOpenFile }: { takeOpenFile?: () => Promise<string | null>; client: SharingClient; initialVaultId?: string; desktop?: boolean; onEditingChange?: (dirty: boolean, busy: boolean) => void }) {
   const [file, setFile] = useState<AccessFile | null>(null), current = useRef<AccessFile | null>(null)
   const [dirty, setDirty] = useState(false), [error, setError] = useState(''), [busy, setBusy] = useState(false)
+  const [viewOpened, setViewOpened] = useState(false)
   const [formDirty, setFormDirty] = useState(false), [formBusy, setFormBusy] = useState(false)
   const changed = useCallback((dirty: boolean, busy: boolean) => { setFormDirty(dirty); setFormBusy(busy) }, [])
   useEffect(() => { onEditingChange?.(dirty || formDirty, busy || formBusy) }, [dirty, formDirty, busy, formBusy, onEditingChange])
@@ -75,7 +76,7 @@ export function FileVaultApp({ client, initialVaultId, desktop = false, onEditin
     }
   }, [client, clear])
   return <>
-    <section className="ek-sharing" style={{ paddingBottom: 0 }}><div className="ek-card"><h2>Open an Everkeep file</h2><p>Download the shared file from its owner, then choose it here. Its contents stay on this device. Sign in and accept your invitation to unlock the information you can access.</p>
+    <section className="ek-sharing" style={{ paddingBottom: 0 }}><div className="ek-card ek-file-utility"><details open={!viewOpened || busy || Boolean(error)}><summary>{file ? `File: ${file.name}` : 'Open an Everkeep file'}</summary><h2>Open an Everkeep file</h2><p>Download the shared file from its owner, then choose it here. Its contents stay on this device. Sign in and accept your invitation to unlock the information you can access.</p>
       <label><span>Choose an access-controlled .everkeep file</span><input type="file" accept=".everkeep" disabled={busy || formBusy || formDirty} onChange={async event => {
         const selected = event.target.files?.[0]; event.target.value = ''; if (!selected) return
         if (dirty && !window.confirm('Discard unsaved file changes?')) return
@@ -89,9 +90,10 @@ export function FileVaultApp({ client, initialVaultId, desktop = false, onEditin
           const next = AccessFileSchema.parse(value); current.current = next; setFile(next); setDirty(false)
         } catch (error) { setError(message(error)) } finally { setBusy(false) }
       }} /></label>
-      {file && <><p>File: {file.name}. Ownership will be checked with Everkeep. No automatic synchronization.</p><button disabled={busy || formDirty || formBusy} onClick={() => { if (dirty && !window.confirm('Discard unsaved file changes?')) return; clear() }}>Close file</button> <button disabled={!dirty || busy || formDirty || formBusy} onClick={() => { if (!current.current) return; download(JSON.stringify(current.current), `${current.current.name.replace(/[^a-zA-Z0-9 -]/g, '_')} updated.everkeep`); setDirty(false) }}>Save updated Everkeep file</button>{dirty && <p role="status">Your edits are in this session. Save an updated file to keep them. They have not been sent to the owner.</p>}</>}
+      </details>
+      {file && <><p className="ek-muted">File: {file.name}. Ownership will be checked with Everkeep. No automatic synchronization.</p><button disabled={busy || formDirty || formBusy} onClick={() => { if (dirty && !window.confirm('Discard unsaved file changes?')) return; clear() }}>Close file</button> <button disabled={!dirty || busy || formDirty || formBusy} onClick={() => { if (!current.current) return; download(JSON.stringify(current.current), `${current.current.name.replace(/[^a-zA-Z0-9 -]/g, '_')} updated.everkeep`); setDirty(false) }}>Save updated Everkeep file</button>{dirty && <p role="status">Your edits are in this session. Save an updated file to keep them. They have not been sent to the owner.</p>}</>}
       {error && <p className="ek-error" role="alert">{error}</p>}
     </div></section>
-    <SharedVaultApp key={file?.packageId || 'hosted'} client={wrapped} initialVaultId={file?.vaultId || initialVaultId} desktop={desktop} onEditingChange={changed} />
+    <SharedVaultApp key={file?.packageId || 'hosted'} client={wrapped} initialVaultId={file?.vaultId || initialVaultId} desktop={desktop} onEditingChange={changed} onViewChange={setViewOpened} />
   </>
 }

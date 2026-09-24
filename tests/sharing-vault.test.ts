@@ -16,6 +16,21 @@ function setup(password?: string) {
   const path = join(root, 'original.everkeep'); service.createVault({ name: 'Shared subject', filePath: path, password }); return { service, root, path }
 }
 describe('local shared vault persistence', () => {
+  it('persists the welcome and shares read-only presentation fields with stable contact references', () => {
+    const { service, path } = setup('test-password')
+    const person = service.createPerson({ fullName: 'Jamie' })
+    const letter = service.createEntry({ section: 'letters', title: 'For Jamie', fields: { body: 'With love.' } })
+    service.updateHandoff({ ...service.getHandoff(), welcomeMessage: 'Welcome home.\n\nTake your time.', welcomeSignature: 'Mom', featuredLetterId: letter.id, primaryContactId: person.id })
+    service.closeVault(); service.openVault({ filePath: path, password: 'test-password' })
+    expect(service.getHandoff()).toMatchObject({ welcomeSignature: 'Mom', featuredLetterId: letter.id })
+    const snapshot = service.getSharingSnapshot(), intro = snapshot.records.find(record => record.kind === 'handoff')!
+    expect(intro.fields.welcomeMessage).toMatchObject({ value: 'Welcome home.\n\nTake your time.', editable: false })
+    expect(intro.fields.primaryContactRef).toMatchObject({ value: person.id, editable: false })
+    intro.fields.welcomeSignature.value = 'Unauthorized edit'
+    service.applySharingSnapshot(snapshot)
+    expect(service.getHandoff().welcomeSignature).toBe('Mom')
+  })
+
   it('applies valid edits transactionally and preserves linked relationships and sensitive fields', () => {
     const { service } = setup('test-password')
     const person = service.createPerson({ fullName: 'Owner subject', roles: ['executor'] })

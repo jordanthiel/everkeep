@@ -1,4 +1,7 @@
 export interface FamilyHandoff {
+  welcomeMessage: string
+  welcomeSignature: string
+  featuredLetterId: string
   primaryContactId: string
   alternateContactId: string
   careInstructions: string
@@ -15,6 +18,7 @@ export interface FamilyHandoff {
   verifiedBackupPath: string
 }
 export const EMPTY_HANDOFF: FamilyHandoff = {
+  welcomeMessage: '', welcomeSignature: '', featuredLetterId: '',
   primaryContactId: '', alternateContactId: '', careInstructions: '', incapacityInstructions: '',
   deathInstructions: '', documentsLocation: '', vaultLocation: '', backupLocation: '', passwordInstructions: '',
   sharedWith: '', handoffTestedAt: '', lastBackupAt: '', lastBackupVerifiedAt: '', verifiedBackupPath: ''

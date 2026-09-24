@@ -64,6 +64,11 @@ export class SharedVaultAdapter {
     }
     const plan = new HandoffRepository(this.db).get()
     records.push({ id: metadata.id, kind: 'handoff', section: 'Instructions', title: 'Starting information and access instructions', version: 1, attachments: [], fields: {
+      welcomeMessage: field('Welcome message', plan.welcomeMessage, false),
+      welcomeSignature: field('Signature', plan.welcomeSignature, false, 200),
+      featuredLetterId: field('Opening letter', plan.featuredLetterId, false, 36),
+      primaryContactRef: field('Supporting contact reference', plan.primaryContactId, false, 36),
+      alternateContactRef: field('Another supporting contact reference', plan.alternateContactId, false, 36),
       careInstructions: field('Immediate priorities', plan.careInstructions), incapacityInstructions: field('If I cannot help', plan.incapacityInstructions), deathInstructions: field('After my death', plan.deathInstructions), documentsLocation: field('Original documents', plan.documentsLocation),
       primaryContactId: field('Supporting contact', plan.primaryContactId ? personName(plan.primaryContactId) : '', false), alternateContactId: field('Another supporting contact', plan.alternateContactId ? personName(plan.alternateContactId) : '', false),
       vaultLocation: field('Where to find the original vault', plan.vaultLocation), backupLocation: field('Where to find a separate copy', plan.backupLocation), passwordInstructions: { ...field('Access instructions', plan.passwordInstructions), sensitive: true }

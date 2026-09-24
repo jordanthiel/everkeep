@@ -45,27 +45,45 @@ app.whenReady().then(async () => {
   const stop = registerSharingHandlers(() => service)
   ipcMain.handle('sharing:openRequest', () => null)
   const wrap = (channel: string, fn: () => unknown) => ipcMain.handle(channel, () => ({ ok: true, data: fn() }))
+  ipcMain.handle(IpcChannels.vault.updateHandoff, (_event, input) => ({ ok: true, data: service.updateHandoff(input) }))
   wrap(IpcChannels.vault.getStatus, () => service.getStatus()); wrap(IpcChannels.vault.getDashboard, () => service.getDashboard()); wrap(IpcChannels.vault.getHandoff, () => service.getHandoff()); wrap(IpcChannels.app.getUpdateStatus, () => ({ state: 'idle' })); ipcMain.handle(IpcChannels.app.getBackupOpenRequest, () => null)
   const desktop = new BrowserWindow({ width: 1280, height: 840, show: false, webPreferences: { preload: resolve('out/preload/index.js'), contextIsolation: true, sandbox: true } })
   const browser = new BrowserWindow({ width: 960, height: 640, show: false, webPreferences: { partition: 'sharing-recipient-test', contextIsolation: true, sandbox: true } })
   const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
   const execute = async (window: BrowserWindow, source: string) => { try { return await window.webContents.executeJavaScript(source) } catch (error) { throw new Error(`Failed browser action: ${source.slice(0, 220)}\n${await window.webContents.executeJavaScript('document.body.innerText')}`, { cause: error }) } }
   async function until(window: BrowserWindow, source: string) { for (let i = 0; i < 160; i++) { if (await execute(window, source)) return; await pause(50) } throw new Error(`Timed out ${source}\n${await execute(window, 'document.body.innerText')}`) }
-  async function click(window: BrowserWindow, label: string) { await execute(window, `(() => { const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Unavailable button ' + ${JSON.stringify(label)}); button.click() })()`); await pause(80) }
+  async function click(window: BrowserWindow, label: string) { await execute(window, `(() => { const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Unavailable button ' + ${JSON.stringify(label)}); for (let node = button.parentElement; node; node = node.parentElement) if (node.tagName === 'DETAILS') node.open = true; button.click() })()`); await pause(80) }
   async function fill(window: BrowserWindow, label: string, value: string) { await execute(window, `(() => { const item = [...document.querySelectorAll('label')].find(l => l.textContent.includes(${JSON.stringify(label)})); const field = item?.querySelector('input,textarea'); if (!field) throw new Error('Missing field ' + ${JSON.stringify(label)}); const type = field.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement; Object.getOwnPropertyDescriptor(type.prototype,'value').set.call(field,${JSON.stringify(value)}); field.dispatchEvent(new Event('input',{bubbles:true})) })()`); await pause(50) }
-  async function signIn(window: BrowserWindow, email: string) { await until(window, "document.body.innerText.includes('Email me a sign-in code')"); await fill(window, 'Email address', email); await click(window, 'Email me a sign-in code'); await until(window, "document.body.innerText.includes('Six-digit code')"); const code = mails.filter(mail => mail.to === email).at(-1)!.text.match(/\b\d{6}\b/)![0]; await fill(window, 'Six-digit code', code); await click(window, 'Verify and continue'); await until(window, "document.body.innerText.includes('Signed in as')") }
+  async function openRecord(window: BrowserWindow, title: string) { await until(window, "document.body.innerText.includes('All information') && document.querySelector('.ek-record-link, .ek-library-filters') !== null"); await click(window, 'All information'); await until(window, "document.querySelector('.ek-library-filters') !== null"); await execute(window, `(() => { const item = [...document.querySelectorAll('.ek-record-link strong')].find(node => node.textContent === ${JSON.stringify(title)}); if (!item) throw new Error('Missing record'); item.closest('button').click() })()`); await pause(80) }
+  async function signIn(window: BrowserWindow, email: string) { await until(window, "document.body.innerText.includes('Email me a sign-in code')"); await fill(window, 'Email address', email); await click(window, 'Email me a sign-in code'); await until(window, "document.body.innerText.includes('Six-digit code')"); const code = mails.filter(mail => mail.to === email).at(-1)!.text.match(/\b\d{6}\b/)![0]; await fill(window, 'Six-digit code', code); await click(window, 'Verify and continue'); await until(window, "document.body.textContent.includes('Signed in as')") }
   try {
     service.createVault({ name: 'Family sharing fixture', filePath: join(root, 'family.everkeep') })
-    service.createPerson({ fullName: 'Child Recipient', email: 'child@example.com' })
+    const recipient = service.createPerson({ fullName: 'Child Recipient', email: 'child@example.com' })
     const record = service.createEntry({ section: 'documents', title: 'Care directions', notes: 'Original directions' })
     service.createEntry({ section: 'letters', title: 'Private letter', notes: 'Not for this recipient' })
+    const personalLetter = service.createEntry({ section: 'letters', title: 'A few things I want you to know', fields: { recipient: recipient.id, date: '2026-09-22', body: 'My dear family,\n\nThere is no need to figure everything out today. I put these things together so you would have a little less to carry.\n\nRemember the summers by the lake, the long breakfasts, and the way we always found something to laugh about. ' + 'Those ordinary days meant everything to me. '.repeat(30) + '\n\nWith all my love.' } })
+    const letterSource = join(root, 'a-memory.txt'); writeFileSync(letterSource, 'A memory from the lake.')
+    service.attachFile(personalLetter.id, letterSource)
+    service.updateHandoff({ ...service.getHandoff(), careInstructions: 'Take a breath. Call someone you trust before you begin.', primaryContactId: recipient.id, incapacityInstructions: 'Please start with the care directions.', deathInstructions: 'The original documents are in the study.' })
+    const moreDocuments = Array.from({ length: 12 }, (_, index) => service.createEntry({ section: 'documents', title: `Family document ${String(index + 1).padStart(2, '0')}` }))
+    const bank = service.createAccount({ institution: 'Family bank', accountType: 'checking', fullAccountNumber: '987654321234' })
+    const introId = service.getSharingSnapshot().records.find(record => record.kind === 'handoff')!.id
     await desktop.loadFile(resolve('out/renderer/index.html'), { hash: '/review' }); await signIn(desktop, 'owner@example.com')
+    await fill(desktop, 'Welcome message', 'I made this space for you.\n\nYou can start with my letter, or simply find what you need. There is no rush.')
+    await fill(desktop, 'Signature or display name', 'With love, Mom')
+    await execute(desktop, `(() => { const select = [...document.querySelectorAll('label')].find(label => label.textContent.includes('Featured letter')).querySelector('select'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(select, ${JSON.stringify(personalLetter.id)}); select.dispatchEvent(new Event('change', { bubbles: true })) })()`)
+    await click(desktop, 'Save welcome'); await until(desktop, "document.body.innerText.includes('Welcome saved.')")
+    assert.equal(service.getHandoff().featuredLetterId, personalLetter.id)
     await click(desktop, 'Register file-based sharing'); await until(desktop, "document.body.innerText.includes('Who would you like to share with?')")
     const status = await execute(desktop, 'window.everkeep.sharing.status()'), id = status.local.sharedId
     assert.ok(id)
     await fill(desktop, 'Recipient email', 'child@example.com')
     await execute(desktop, "[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Only information I choose')).querySelector('input').click()")
     await execute(desktop, "[...document.querySelectorAll('label')].find(l=>l.textContent.includes('Care directions')).querySelector('input').click()")
+    await click(desktop, 'Preview recipient experience')
+    assert.ok(!(await execute(desktop, "document.querySelector('.ek-recipient-preview').innerText")).includes('With love, Mom'))
+    assert.ok(!(await execute(desktop, "document.querySelector('.ek-recipient-preview').innerText")).includes('Private letter'))
+    await click(desktop, 'Close recipient preview')
     await click(desktop, 'Review email and share'); await click(desktop, 'Send invitation'); await until(desktop, "document.body.innerText.includes('Invitation emailed to child@example.com')")
     assert.ok(mails.at(-1)!.text.includes(`#vault/${id}`)); assert.ok(mails.at(-1)!.text.includes('View only'))
     for (const width of [1280, 960]) { desktop.setSize(width, width === 960 ? 640 : 840); await pause(150); writeFileSync(resolve(`.everkeep-temp/sharing-owner-${width}.png`), (await desktop.webContents.capturePage()).toPNG()); assert.ok(await execute(desktop, 'document.documentElement.scrollWidth <= innerWidth')) }
@@ -83,7 +101,7 @@ app.whenReady().then(async () => {
     assert.equal(objects.size, 0, 'Saving a recipient file must not upload contents')
     await browser.loadURL(`${origin}/share/#vault/${id}`); await signIn(browser, 'child@example.com'); await until(browser, "document.body.innerText.includes('Accept invitation and open')"); await click(browser, 'Accept invitation and open')
     await execute(browser, `(() => { const input = document.querySelector('input[type=file]'); const transfer = new DataTransfer(); transfer.items.add(new File([${JSON.stringify(accessFile)}], 'recipient.everkeep')); input.files = transfer.files; input.dispatchEvent(new Event('change', {bubbles:true})) })()`)
-    await until(browser, "document.body.innerText.includes('Care directions')")
+    await openRecord(browser, 'Care directions')
     assert.ok(!(await execute(browser, 'document.body.innerText')).includes('Private letter'))
     assert.equal(await execute(browser, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Edit record')"), false)
     assert.ok(await execute(browser, "document.querySelector('a[href^=\"everkeep://\"]') !== null"))
@@ -91,12 +109,12 @@ app.whenReady().then(async () => {
     await execute(desktop, `window.everkeep.sharing.grant(${JSON.stringify(id)}, {email:'child@example.com',scope:{type:'selected',recordIds:[${JSON.stringify(record.id)}]},canEdit:true})`)
     // Re-select the file to refresh its grant immediately without caching decrypted data.
     await execute(browser, `(() => { const input = document.querySelector('input[type=file]'); const transfer = new DataTransfer(); transfer.items.add(new File([${JSON.stringify(accessFile)}], 'recipient.everkeep')); input.files = transfer.files; input.dispatchEvent(new Event('change', {bubbles:true})) })()`)
-    await click(browser, 'Back to vaults'); await click(browser, 'Open vault')
+    await click(browser, 'Back to vaults'); await click(browser, 'Open vault'); await openRecord(browser, 'Care directions')
     await until(browser, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Edit record')")
     await click(browser, 'Edit record'); await fill(browser, 'Notes', 'A change to this file only'); await click(browser, 'Save changes')
     await until(browser, "document.body.innerText.includes('Save an updated Everkeep file to keep them')")
     assert.equal(objects.size, 0)
-    assert.equal(service.listEntries('documents')[0].notes, 'Original directions')
+    assert.equal(service.listEntries('documents').find(item => item.id === record.id)!.notes, 'Original directions')
     const savedCopy = join(root, 'collaborator-copy.everkeep')
     const completed = new Promise<void>((resolve, reject) => browser.webContents.session.once('will-download', (_event, item) => { item.setSavePath(savedCopy); item.once('done', (_event, state) => state === 'completed' ? resolve() : reject(new Error(state))) }))
     await click(browser, 'Save updated Everkeep file'); await completed
@@ -105,19 +123,51 @@ app.whenReady().then(async () => {
     await click(desktop, 'Enable online sharing')
     await until(desktop, "document.body.innerText.includes('Synchronized')")
     await browser.reload()
-    await until(browser, "document.body.innerText.includes('Care directions')")
+    await openRecord(browser, 'Care directions')
     await execute(desktop, `window.everkeep.sharing.grant(${JSON.stringify(id)}, {email:'child@example.com',scope:{type:'selected',recordIds:[${JSON.stringify(record.id)}]},canEdit:true})`)
-    await browser.reload(); await until(browser, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Edit record')")
+    await browser.reload(); await openRecord(browser, 'Care directions'); await until(browser, "[...document.querySelectorAll('button')].some(b=>b.textContent==='Edit record')")
     await click(browser, 'Edit record'); await fill(browser, 'Notes', 'Collaborator update'); failSaves = true; await click(browser, 'Save changes'); await until(browser, "document.body.innerText.includes('Simulated connection failure')"); assert.ok(await execute(browser, "[...document.querySelectorAll('textarea')].some(t=>t.value==='Collaborator update')")); failSaves = false; await click(browser, 'Save changes'); await until(browser, "document.body.innerText.includes('Changes saved to the shared vault')")
-    await execute(desktop, 'window.everkeep.sharing.sync()'); assert.equal(service.listEntries('documents')[0].notes, 'Collaborator update')
+    await execute(desktop, 'window.everkeep.sharing.sync()'); assert.equal(service.listEntries('documents').find(item => item.id === record.id)!.notes, 'Collaborator update')
     // Simultaneous local and browser edits must produce an explicit source conflict.
     service.updateEntry({ id: record.id, notes: 'Local edit' }); await click(browser, 'Edit record'); await fill(browser, 'Notes', 'Remote edit'); await click(browser, 'Save changes'); await until(browser, "document.body.innerText.includes('Remote edit')")
     await execute(desktop, 'window.everkeep.sharing.sync().catch(()=>{})'); const conflicts = await execute(desktop, 'window.everkeep.sharing.conflicts()'); assert.equal(conflicts.items.length, 1)
-    await execute(desktop, `window.everkeep.sharing.sync(${JSON.stringify({ revision: conflicts.revision, fingerprint: conflicts.fingerprint, choices: { [record.id]: 'shared' } })})`); assert.equal(service.listEntries('documents')[0].notes, 'Remote edit')
+    await execute(desktop, `window.everkeep.sharing.sync(${JSON.stringify({ revision: conflicts.revision, fingerprint: conflicts.fingerprint, choices: { [record.id]: 'shared' } })})`); assert.equal(service.listEntries('documents').find(item => item.id === record.id)!.notes, 'Remote edit')
     for (const width of [1280, 960]) { browser.setSize(width, width === 960 ? 640 : 840); await pause(150); writeFileSync(resolve(`.everkeep-temp/sharing-recipient-${width}.png`), (await browser.webContents.capturePage()).toPNG()); assert.ok(await execute(browser, 'document.documentElement.scrollWidth <= innerWidth')) }
+    // A personal home uses only the newly permitted records, in browser and file readers.
+    const personalScope = { type: 'selected', recordIds: [record.id, personalLetter.id, introId, recipient.id, bank.id, ...moreDocuments.map(record => record.id)] }
+    await execute(desktop, `window.everkeep.sharing.grant(${JSON.stringify(id)}, ${JSON.stringify({ email: 'child@example.com', scope: personalScope, canEdit: true })})`)
+    await browser.reload(); await until(browser, "document.body.innerText.includes('With love, Mom')")
+    assert.ok(!(await execute(browser, 'document.body.innerText')).includes('Private letter'))
+    assert.ok(await execute(browser, "document.querySelector('.ek-featured-letter').innerText.includes('My dear family,')"))
+    assert.ok(!(await execute(browser, 'document.body.innerText')).includes('Collaborator update'))
+    for (const width of [1280, 390]) { browser.setSize(width, width === 390 ? 844 : 900); await pause(150); writeFileSync(resolve(`.everkeep-temp/sharing-personal-home-${width}.png`), (await browser.webContents.capturePage()).toPNG()); assert.ok(await execute(browser, 'document.documentElement.scrollWidth <= innerWidth')) }
+    await click(browser, 'Read the letter')
+    assert.ok(await execute(browser, "document.activeElement.tagName === 'H1'"))
+    assert.ok(!(await execute(browser, 'document.body.innerText')).includes('Private?'))
+    assert.ok(await execute(browser, "document.querySelector('.ek-letter-body').textContent.includes('With all my love.')"))
+    writeFileSync(resolve('.everkeep-temp/sharing-personal-letter-390.png'), (await browser.webContents.capturePage()).toPNG())
+    const downloadedLetter = join(root, 'downloaded-memory.txt')
+    const attachedDownload = new Promise<void>((resolve, reject) => browser.webContents.session.once('will-download', (_event, item) => { item.setSavePath(downloadedLetter); item.once('done', (_event, state) => state === 'completed' ? resolve() : reject(new Error(state))) }))
+    await click(browser, 'Save attachment: a-memory.txt'); await attachedDownload; assert.equal(readFileSync(downloadedLetter, 'utf8'), 'A memory from the lake.')
+    // A normal background refresh must preserve the reading page.
+    await pause(15500); assert.ok(await execute(browser, "document.querySelector('.ek-letter-body') !== null"))
+    await click(browser, 'Edit record'); await click(browser, 'Cancel'); assert.ok(await execute(browser, "document.activeElement.tagName === 'H1'"))
+    await click(browser, 'Welcome'); await click(browser, 'If I cannot help'); assert.ok(await execute(browser, "document.body.innerText.includes('Please start with the care directions.')"))
+    await click(browser, 'Welcome'); await click(browser, 'View contact'); assert.ok(await execute(browser, "document.body.innerText.includes('child@example.com')"))
+    await click(browser, 'All information'); await fill(browser, 'Search by title', 'Private'); assert.ok(await execute(browser, "document.body.innerText.includes('No information matches')"))
+    await openRecord(browser, 'Family bank'); assert.ok(!(await execute(browser, 'document.body.innerText')).includes('987654321234'))
+    await click(browser, 'Show'); assert.ok(await execute(browser, "document.body.innerText.includes('987654321234')"))
+    await click(browser, 'Welcome'); await openRecord(browser, 'Family bank'); assert.ok(!(await execute(browser, 'document.body.innerText')).includes('987654321234'))
+    await click(browser, 'All information'); assert.ok(await execute(browser, 'document.querySelectorAll(".ek-record-link").length >= 15'))
+    writeFileSync(resolve('.everkeep-temp/sharing-personal-library-390.png'), (await browser.webContents.capturePage()).toPNG())
+    // Remove the open letter during a live session; the next authorization refresh clears it.
+    await click(browser, 'Welcome'); await click(browser, 'Read the letter')
+    await execute(desktop, `window.everkeep.sharing.grant(${JSON.stringify(id)}, ${JSON.stringify({ email: 'child@example.com', scope: { type: 'selected', recordIds: [record.id] }, canEdit: true })})`)
+    await pause(15500); assert.ok(!(await execute(browser, 'document.body.innerText')).includes('My dear family,')); assert.ok(await execute(browser, "document.querySelector('.ek-welcome') !== null"))
+    await execute(desktop, `window.everkeep.sharing.grant(${JSON.stringify(id)}, ${JSON.stringify({ email: 'child@example.com', scope: personalScope, canEdit: true })})`)
     assert.equal(queueAccessFile(accessPath), id)
     // The app uses the same recipient permissions, without requiring any local vault.
-    await execute(desktop, "window.everkeep.sharing.logout()"); service.closeVault(); await desktop.loadFile(resolve('out/renderer/index.html'), { hash: `/shared?vault=${id}` }); await signIn(desktop, 'child@example.com'); await until(desktop, "document.body.innerText.includes('Original directions')"); assert.ok(!(await execute(desktop, 'document.body.innerText')).includes('Private letter'))
+    await execute(desktop, "window.everkeep.sharing.logout()"); service.closeVault(); await desktop.loadFile(resolve('out/renderer/index.html'), { hash: `/shared?vault=${id}` }); await signIn(desktop, 'child@example.com'); await openRecord(desktop, 'Care directions'); await until(desktop, "document.body.innerText.includes('Original directions')"); assert.ok(!(await execute(desktop, 'document.body.innerText')).includes('Private letter'))
     const owners = db.prepare('SELECT id FROM users WHERE email=?').get('owner@example.com') as { id: string }; assert.ok(owners.id)
     db.prepare("UPDATE memberships SET status='revoked' WHERE email='child@example.com'").run()
     await browser.reload(); await until(browser, "document.body.innerText.includes('No invitations for this email')"); assert.ok(!(await execute(browser, 'document.body.innerText')).includes('Remote edit'))
