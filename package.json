@@ -1,6 +1,6 @@
 {
   "name": "everkeep",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Modern local-first estate & life information organizer",
   "main": "./out/main/index.js",
   "author": "Everkeep",

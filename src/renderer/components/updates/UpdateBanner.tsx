@@ -42,6 +42,9 @@ export function UpdateBanner() {
     setBusy(true)
     try {
       await unwrap(getEverkeepApi().updates.install())
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to start the update installer.'
+      setStatus(current => current ? { ...current, message } : current)
     } finally {
       setBusy(false)
     }
@@ -65,10 +68,9 @@ export function UpdateBanner() {
           <div className="min-w-0">
             <p className="text-sm font-medium text-charcoal-900">{title}</p>
             <p className="mt-1 text-xs text-warm-500">
-              {status.state === 'ready'
+              {status.message || (status.state === 'ready'
                 ? 'Your vault file stays where it is. Restart when you are ready.'
-                : status.message ||
-                  'You can download it now, or get it from the releases page.'}
+                : 'You can download it now, or get it from the releases page.')}
             </p>
             {status.state === 'downloading' && (
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-warm-200">
@@ -103,10 +105,15 @@ export function UpdateBanner() {
             </>
           )}
           {status.state === 'ready' && (
-            <Button size="sm" disabled={busy} onClick={() => void install()}>
-              <RefreshCw className="h-3.5 w-3.5" />
-              Restart to update
-            </Button>
+            <>
+              <Button size="sm" disabled={busy} onClick={() => void install()}>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Restart to update
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => void openReleasePage()}>
+                Releases page
+              </Button>
+            </>
           )}
         </div>
       </div>

@@ -124,6 +124,9 @@ export function SettingsPage() {
     setUpdateBusy(true)
     try {
       await unwrap(getEverkeepApi().updates.install())
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to start the update installer.'
+      setUpdateStatus(current => current ? { ...current, message } : current)
     } finally {
       setUpdateBusy(false)
     }

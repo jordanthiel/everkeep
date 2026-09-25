@@ -1,4 +1,6 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, autoUpdater as nativeUpdater, BrowserWindow, shell } from 'electron'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { autoUpdater, type UpdateInfo } from 'electron-updater'
 import { GITHUB_OWNER, GITHUB_REPO, RELEASES_LATEST_URL } from '../../shared/constants'
 import { IpcChannels } from '../../shared/types/ipc'
@@ -6,6 +8,7 @@ import type { AppUpdateStatus } from '../../shared/types/appUpdate'
 
 const STARTUP_CHECK_DELAY_MS = 4_000
 const PERIODIC_CHECK_MS = 24 * 60 * 60 * 1000
+const execFileAsync = promisify(execFile)
 
 function releaseNotes(info: UpdateInfo): string | undefined {
   const notes = info.releaseNotes
@@ -78,6 +81,7 @@ export class UpdateService {
   }
 
   async check(options: { userInitiated: boolean }): Promise<AppUpdateStatus> {
+    if (this.status.state === 'downloading' || this.status.state === 'ready') return this.status
     if (!app.isPackaged) {
       return this.set({
         state: 'unsupported',
@@ -104,6 +108,7 @@ export class UpdateService {
 
   async download(): Promise<AppUpdateStatus> {
     if (!app.isPackaged) return this.status
+    if (this.status.state === 'downloading' || this.status.state === 'ready') return this.status
     this.lastDownloadPercent = -1
     this.set({
       state: 'downloading',
@@ -124,7 +129,24 @@ export class UpdateService {
     }
   }
 
-  install(): void {
+  async install(): Promise<void> {
+    if (!app.isPackaged || !this.status.canInstall) {
+      throw new Error('The update is not ready to install yet.')
+    }
+    if (process.platform === 'darwin') {
+      // Electron 34's Squirrel helper can remain queued in launchd's
+      // on-demand-only mode. Start the registered job before closing the app.
+      // Do not use -k: an already running installer must not be killed.
+      try {
+        await execFileAsync('/bin/launchctl', [
+          'kickstart', `gui/${process.getuid!()}/com.everkeep.app.ShipIt`
+        ], { timeout: 10_000 })
+      } catch {
+        const message = 'Could not start the update installer. Everkeep will stay open. Try again or download the update from the releases page.'
+        this.set({ message })
+        throw new Error(message)
+      }
+    }
     autoUpdater.quitAndInstall(true, true)
   }
 
@@ -170,6 +192,18 @@ export class UpdateService {
     })
 
     autoUpdater.on('update-downloaded', (info) => {
+      // On macOS this event precedes Squirrel's extraction and verification.
+      // Only the native event means the installer has actually been staged.
+      if (process.platform === 'darwin') {
+        this.set({
+          state: 'downloading',
+          availableVersion: info.version,
+          downloadPercent: 100,
+          canInstall: false,
+          message: 'Preparing the update for installation…'
+        })
+        return
+      }
       this.set({
         state: 'ready',
         availableVersion: info.version,
@@ -178,6 +212,17 @@ export class UpdateService {
         message: 'Restart Everkeep to install the update. Your vault file is not affected.'
       })
     })
+
+    if (process.platform === 'darwin') {
+      nativeUpdater.on('update-downloaded', () => {
+        this.set({
+          state: 'ready',
+          downloadPercent: 100,
+          canInstall: true,
+          message: 'Restart Everkeep to install the update. Your vault file is not affected.'
+        })
+      })
+    }
 
     autoUpdater.on('error', (error) => {
       if (this.status.state === 'checking') return

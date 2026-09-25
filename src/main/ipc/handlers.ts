@@ -169,8 +169,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IpcChannels.app.installUpdate, async () => {
     try {
-      shutdownVaultService()
-      getUpdateService().install()
+      await getUpdateService().install()
       return ok({ quitting: true })
     } catch (error) {
       return fromError(error)
