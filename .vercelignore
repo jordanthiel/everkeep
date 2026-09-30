@@ -1,0 +1,26 @@
+# Deploy only the website source and the files its build needs.
+*
+!package.json
+!package-lock.json
+!vercel.json
+!website
+!website/**
+!src
+!src/sharing
+!src/sharing/**
+!src/shared
+!src/shared/**
+!sharing
+!sharing/**
+!supabase
+!supabase/functions
+!supabase/functions/_shared
+!supabase/functions/_shared/sharing
+!supabase/functions/_shared/sharing/**
+website/node_modules/**
+website/dist/**
+sharing/dist/**
+website/.vercel/**
+**/.env
+**/.env.*
+**/*.local

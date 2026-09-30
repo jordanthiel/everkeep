@@ -66,8 +66,8 @@ export function nextTopicPath(stepId: string, statuses: JourneyStatuses) {
 export function topicAction(status?: StepStatus) {
   return !status ? 'Start' : status === 'in-progress' ? 'Continue' : status === 'reviewed' || status === 'not-applicable' ? 'Edit' : 'Review'
 }
-export function withSavedTopics(statuses: JourneyStatuses, counts: Record<string, number> = {}): JourneyStatuses {
+export function withSavedTopics(statuses: JourneyStatuses, counts: Record<string, number> = {}, initialCounts: Record<string, number> = {}): JourneyStatuses {
   const result = { ...statuses }
-  for (const [id, count] of Object.entries(counts)) if (count > 0 && !result[id]) result[id] = 'in-progress'
+  for (const [id, count] of Object.entries(counts)) if (count > (initialCounts[id] ?? 0) && !result[id]) result[id] = 'in-progress'
   return result
 }

@@ -6,6 +6,11 @@ const required = (name: string) => { const value = Deno.env.get(name); if (!valu
 const url = required('SUPABASE_URL')
 const sql = postgres(Deno.env.get('SHARING_DATABASE_URL') || required('SUPABASE_DB_URL'), { prepare: false, max: 1 })
 const handler = createSharingHandler({
+  STRIPE_WEBHOOK_SECRET: Deno.env.get('STRIPE_WEBHOOK_SECRET'),
+  STRIPE_SECRET_KEY: Deno.env.get('STRIPE_SECRET_KEY'),
+  STRIPE_LIFETIME_PRICE_ID: Deno.env.get('STRIPE_LIFETIME_PRICE_ID'),
+  STRIPE_PAYMENT_LINK_URL: Deno.env.get('STRIPE_PAYMENT_LINK_URL'),
+  STRIPE_LIVEMODE: Deno.env.get('STRIPE_LIVEMODE') !== 'false',
   DB: createPostgresDatabase(sql as unknown as TransactionalSql),
   FILES: createSupabaseBucket(url, required('SUPABASE_SERVICE_ROLE_KEY')),
   AUTH: createSupabaseAuth(url, required('SUPABASE_ANON_KEY'), fetch, required('SUPABASE_SERVICE_ROLE_KEY')),

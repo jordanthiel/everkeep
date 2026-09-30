@@ -77,6 +77,11 @@ const api: EverkeepApi = {
     }
   },
   vault: {
+    onLocked: (listener) => {
+      const wrapped = (_event: unknown, session: import('../shared/types/vault').VaultSession) => listener(session)
+      ipcRenderer.on('vault:locked', wrapped)
+      return () => ipcRenderer.removeListener('vault:locked', wrapped)
+    },
     getPacketDraft: () => ipcRenderer.invoke(IpcChannels.vault.getPacketDraft),
     savePacketDraft: (input: PacketDraft, vaultId: string) => ipcRenderer.invoke(IpcChannels.vault.savePacketDraft, { draft: input, vaultId }),
     clearPacketDraft: () => ipcRenderer.invoke(IpcChannels.vault.clearPacketDraft),

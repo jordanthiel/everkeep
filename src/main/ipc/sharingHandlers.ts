@@ -1,3 +1,4 @@
+import type { LicenseService } from '../services/LicenseService'
 import { takeAccessFile } from '../files/AccessFileRequests'
 import { dialog, ipcMain, shell } from 'electron'
 import { writeFileSync } from 'fs'
@@ -7,9 +8,9 @@ import { GrantSchema, InvitationSchema } from '../../shared/sharing'
 import { SharingService } from '../services/SharingService'
 import type { VaultService } from '../services/VaultService'
 
-export function registerSharingHandlers(vault: () => VaultService) {
+export function registerSharingHandlers(vault: () => VaultService, license?: LicenseService) {
   let instance: SharingService | null = null
-  const service = () => { if (!instance) { instance = new SharingService(vault()); instance.start() } return instance }
+  const service = () => { if (!instance) { instance = new SharingService(vault(), undefined, license); instance.start() } return instance }
   const idSchema = z.string().uuid()
   const emailSchema = z.string().trim().email().max(200)
   ipcMain.handle('sharing:status', async () => { await service().loadConfiguration().catch(() => {}); return service().status() })
@@ -67,5 +68,6 @@ export function registerSharingHandlers(vault: () => VaultService) {
     const result = await dialog.showSaveDialog({ title: 'Save shared attachment', defaultPath: basename(file.name) })
     if (!result.canceled && result.filePath) writeFileSync(result.filePath, file.bytes, { mode: 0o600 })
   })
-  return () => { instance?.stop(); instance = null }
+  service() // Install the owner-key resolver before any local open or restore.
+  return { stop: () => { instance?.stop(); instance = null }, createOwnerVault: (input: import('../../shared/types/vault').CreateVaultInput) => service().createOwnerVault(input) }
 }

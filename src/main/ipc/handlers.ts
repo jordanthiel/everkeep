@@ -120,7 +120,8 @@ async function pickAttachmentFile(): Promise<{ path: string; filename: string } 
 }
 
 export function registerIpcHandlers(): void {
-  stopSharing = registerSharingHandlers(getVaultService)
+  const sharing = registerSharingHandlers(getVaultService, getLicenseService())
+  stopSharing = sharing.stop
   const service = getVaultService()
   ipcMain.handle(IpcChannels.vault.getPacketDraft, async () => { try { return ok(service.getPacketDraft()) } catch (error) { return fromError(error) } })
   ipcMain.handle(IpcChannels.vault.savePacketDraft, async (_event, raw) => { try { const input = SavePacketDraftSchema.parse(raw); if (service.getStatus().session?.metadata.id !== input.vaultId) throw new Error('The active vault has changed.'); return ok(service.savePacketDraft(input.draft)) } catch (error) { return fromError(error) } })
@@ -250,7 +251,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.vault.create, async (_event, raw) => {
     try {
       const input = CreateVaultSchema.parse(raw)
-      return ok(service.createVault(input))
+      return ok(await sharing.createOwnerVault(input))
     } catch (error) {
       return fromError(error)
     }
@@ -261,7 +262,7 @@ export function registerIpcHandlers(): void {
       const input = OpenVaultSchema.parse(raw)
       const sharedId = queueAccessFile(input.filePath)
       if (sharedId) return { ok: false, error: { code: 'SHARED_FILE', message: sharedId } }
-      return ok(service.openVault(input))
+      return ok(await service.openVerifiedVault(input))
     } catch (error) {
       return fromError(error)
     }
@@ -286,7 +287,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IpcChannels.vault.unlock, async (_event, raw) => {
     try {
       const { password } = UnlockVaultSchema.parse(raw)
-      return ok(service.unlockVault(password))
+      return ok(await service.unlockVerifiedVault(password))
     } catch (error) {
       return fromError(error)
     }
@@ -650,7 +651,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IpcChannels.license.getStatus, async () => {
     try {
-      return ok(getLicenseService().getStatus())
+      return ok(await getLicenseService().refreshAccount(true))
     } catch (error) {
       return fromError(error)
     }

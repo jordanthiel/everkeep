@@ -100,12 +100,17 @@ describe('verified shared vault access', () => {
     for (const value of objects.values()) { expect(Buffer.from(value).toString()).not.toContain('Secret'); expect(Buffer.from(value).toString()).not.toContain('Highly private'); expect(Buffer.from(value).toString()).not.toContain(invite.password) }
     expect(db.serialize().includes(Buffer.from(invite.password))).toBe(false)
   })
-  it('retains a recoverable failed invitation and uses the same idempotency key on retry', async () => {
+  it('retains a recoverable failed invitation and deduplicates a successfully sent retry', async () => {
     const owner = await signIn('owner@example.com'), { id } = await publish(owner)
     const invite = { email: 'viewer@example.com', scope: { type: 'all' }, canEdit: false, requestId: randomUUID() }
     failMail = true; expect((await call(`/vaults/${id}/invite`, owner, 'POST', invite)).status).toBe(500)
     expect(await (await call(`/vaults/${id}/members`, owner)).json()).toMatchObject([{ emailStatus: 'failed' }])
-    failMail = false; expect((await call(`/vaults/${id}/invite`, owner, 'POST', invite)).status).toBe(200); expect(mails.at(-1)!.key).toBe(invite.requestId)
+    failMail = false; expect((await call(`/vaults/${id}/invite`, owner, 'POST', invite)).status).toBe(200); const sent = mails.at(-1)!
+    const tokenHash = decodeURIComponent(sent.text.match(/token_hash=([^\s]+)/)![1])
+    expect(sent.key).toBe(`${invite.requestId}:${createHash('sha256').update(tokenHash).digest('hex')}`)
+    const count = mails.length
+    expect((await call(`/vaults/${id}/invite`, owner, 'POST', invite)).status).toBe(200)
+    expect(mails).toHaveLength(count)
   })
   it('prevents stale whole-vault publishing from overwriting a collaborator edit', async () => {
     const owner = await signIn('owner@example.com'), { id, data } = await publish(owner)

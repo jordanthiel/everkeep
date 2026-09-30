@@ -6,6 +6,8 @@ release
 .DS_Store
 .env
 .env.*
+# Stripe live credentials stay on this machine.
+.env.local
 coverage
 *.local
 .vscode/*
@@ -27,3 +29,5 @@ supabase/.branches/
 
 !supabase/.env.example
 !sharing/.env.example
+
+.vercel/

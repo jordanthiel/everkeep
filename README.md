@@ -4,6 +4,12 @@ A modern local-first desktop application for organizing the information your fam
 
 Everkeep is **not** a will-creation tool and does not provide legal, tax, or financial advice.
 
+New vaults require verified email sign-in and an internet connection to create, open, unlock, or restore. Records and attachments remain encrypted in the local file; the sharing service holds an encrypted owner-only unlock secret. Backups and personal copies retain the same protection. Existing vaults keep their original password or unprotected behavior.
+
+Deploy the owner-key database migration and sharing function before releasing this desktop version; see [Supabase setup](supabase/README.md). Local development needs `EVERKEEP_SHARING_URL` pointing to that service to create new vaults.
+
+Lifetime purchases follow the verified email account. Sign in with the checkout email to restore paid features automatically; no license key is required. See [billing setup](supabase/README.md#email-based-lifetime-purchases) for Stripe configuration and migration of older purchases.
+
 ## Stack
 
 - Electron
@@ -49,10 +55,10 @@ Windows machine or the `Release Windows` GitHub Action, then confirm
 Set the GitHub Actions **repository variable** `EVERKEEP_SHARING_URL` to the same
 public Supabase function URL used by the website's `VITE_SHARING_API_URL`.
 Both desktop release workflows embed this URL at build time. They fail if it is
-missing, the service lacks file-sharing support, the service configuration is unavailable, or the built main-process
+missing, the service lacks file-sharing, owner-vault, or configured email-billing support, the service configuration is unavailable, or the built main-process
 bundle does not contain it. This is a public endpoint, never a service-role key.
 Changing a Vercel variable does not configure the desktop installers; a new
-app build is required. Local builds remain optionally unconfigured.
+app build is required. Unconfigured local builds can open legacy vaults but cannot create new owner-protected vaults.
 
 ### Trusted macOS releases
 

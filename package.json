@@ -1,6 +1,6 @@
 {
   "name": "everkeep",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Modern local-first estate & life information organizer",
   "main": "./out/main/index.js",
   "author": "Everkeep",
@@ -11,6 +11,7 @@
     "url": "https://github.com/jordanthiel/everkeep.git"
   },
   "scripts": {
+    "dev:local": "node scripts/dev-local.mjs",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
@@ -33,7 +34,7 @@
     "test:electron": "npm run rebuild:electron && node scripts/test-electron.mjs",
     "sharing:build": "npm run website:build",
     "sharing:dev": "supabase functions serve sharing --env-file supabase/.env.local",
-    "test:sharing": "npm run build && npm run sharing:build && node scripts/test-sharing.mjs",
+    "test:sharing": "npm run build && npm --prefix website run build -- --mode test && node scripts/test-sharing.mjs",
     "test:sharing:postgres": "node scripts/test-sharing-postgres.mjs",
     "test:sharing:supabase": "node scripts/supabase-local-smoke.mjs"
   },

@@ -1,6 +1,9 @@
-import { useMemo, useState } from 'react'
+import type { SharingAccount as Account } from '@shared/sharing'
+import { SharingAccount } from '../../sharing/SharingAccount'
+import '../../sharing/sharing.css'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Folder, Shield } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Folder } from 'lucide-react'
 import { EverkeepMark } from '@renderer/components/brand/EverkeepMark'
 import { Button } from '@renderer/components/ui/Button'
 import { Input } from '@renderer/components/ui/Input'
@@ -27,16 +30,31 @@ export function CreateVaultPage() {
     householdName: ''
   })
 
-  const [protectWithPassword, setProtectWithPassword] = useState(false)
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [filePath, setFilePath] = useState<string | null>(null)
+  const [account, setAccount] = useState<Account | null>(null)
+  const [selectedFilePath, setFilePath] = useState<string | null>(null)
+  const [defaultDirectory, setDefaultDirectory] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void unwrap(getEverkeepApi().vault.getDefaultVaultDir())
+      .then((directory) => { if (active) setDefaultDirectory(directory) })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : 'Unable to load the default location. Choose a location to continue.')
+      })
+    return () => { active = false }
+  }, [])
 
   const suggestedName = useMemo(() => {
     if (owner.householdName.trim()) return owner.householdName.trim()
     const parts = [owner.lastName, 'Family'].filter(Boolean)
     return parts.join('-') || 'My Family'
   }, [owner.householdName, owner.lastName])
+
+  const safeFileName = Array.from(suggestedName, (character) =>
+    character.charCodeAt(0) < 32 || /[<>:"/\\|?*]/.test(character) ? '-' : character
+  ).join('').replace(/[. ]+$/, '') || 'My Family'
+  const separator = defaultDirectory?.includes('\\') ? '\\' : '/'
+  const filePath = selectedFilePath ?? (defaultDirectory ? `${defaultDirectory}${separator}${safeFileName}.everkeep` : null)
 
   function validateStep1(): boolean {
     if (!owner.firstName.trim() || !owner.lastName.trim()) {
@@ -47,27 +65,10 @@ export function CreateVaultPage() {
     return true
   }
 
-  function validateStep2(): boolean {
-    if (!protectWithPassword) {
-      setError(null)
-      return true
-    }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters.')
-      return false
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match.')
-      return false
-    }
-    setError(null)
-    return true
-  }
-
   async function pickLocation() {
     setError(null)
     try {
-      const path = await unwrap(getEverkeepApi().vault.pickSavePath(suggestedName))
+      const path = await unwrap(getEverkeepApi().vault.pickSavePath(safeFileName))
       if (path) setFilePath(path)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to choose location.')
@@ -75,6 +76,11 @@ export function CreateVaultPage() {
   }
 
   async function createVault() {
+    if (!account) {
+      setError('Verify your email before creating a vault.')
+      setStep(2)
+      return
+    }
     if (!filePath) {
       setError('Choose where to save your Everkeep Vault.')
       return
@@ -85,14 +91,14 @@ export function CreateVaultPage() {
     try {
       const session = await unwrap(
         getEverkeepApi().vault.create({
+          ownerEmail: account.email,
           name: suggestedName,
           filePath,
           householdName: owner.householdName || suggestedName,
           ownerFirstName: owner.firstName,
           ownerLastName: owner.lastName,
           ownerPreferredName: owner.preferredName || undefined,
-          spousePartnerName: owner.spousePartner || undefined,
-          password: protectWithPassword ? password : undefined
+          spousePartnerName: owner.spousePartner || undefined
         })
       )
       setSession(session)
@@ -109,6 +115,7 @@ export function CreateVaultPage() {
       <div className="w-full max-w-xl">
         <button
           type="button"
+          disabled={busy}
           onClick={() => (step === 1 ? navigate('/welcome') : setStep((s) => (s - 1) as Step))}
           className="mb-6 inline-flex items-center gap-1.5 text-sm text-warm-500 hover:text-charcoal-800"
         >
@@ -202,92 +209,14 @@ export function CreateVaultPage() {
 
         {step === 2 && (
           <div>
-            <h1 className="font-display text-3xl font-medium text-charcoal-900">
-              Would you like to protect this Everkeep Vault with a password?
-            </h1>
-            <p className="mt-3 text-warm-500">
-              The password is never sent anywhere. If you forget it, Everkeep cannot recover it.
-            </p>
-
-            <div className="mt-8 grid gap-3">
-              <button
-                type="button"
-                onClick={() => setProtectWithPassword(true)}
-                className={cn(
-                  'rounded-xl border px-5 py-4 text-left transition',
-                  protectWithPassword
-                    ? 'border-forest-600 bg-forest-700/5'
-                    : 'border-warm-200 bg-ivory-50 hover:border-warm-300'
-                )}
-              >
-                <div className="flex items-center gap-2 font-medium text-charcoal-900">
-                  <Shield className="h-4 w-4 text-forest-600" />
-                  Protect with Password
-                </div>
-                <p className="mt-1 text-sm text-warm-500">
-                  Recommended for vaults that include sensitive identifiers and financial details.
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setProtectWithPassword(false)
-                  setPassword('')
-                  setConfirmPassword('')
-                }}
-                className={cn(
-                  'rounded-xl border px-5 py-4 text-left transition',
-                  !protectWithPassword
-                    ? 'border-forest-600 bg-forest-700/5'
-                    : 'border-warm-200 bg-ivory-50 hover:border-warm-300'
-                )}
-              >
-                <div className="font-medium text-charcoal-900">Continue Without Password</div>
-                <p className="mt-1 text-sm text-warm-500">
-                  Anyone with access to this file on your computer can open it.
-                </p>
-              </button>
+            <h1 className="font-display text-3xl font-medium text-charcoal-900">Secure your vault with your email</h1>
+            <p className="mt-3 text-warm-500">Your original vault is encrypted and can only be unlocked by your verified account. Your records stay in the file on your computer. Internet access is required each time you open or unlock it.</p>
+            <div className="ek-sharing mt-6" style={{ padding: 0 }}>
+              <SharingAccount client={getEverkeepApi().sharing} onChange={setAccount} ownerVault />
             </div>
-
-            {protectWithPassword && (
-              <div className="mt-6 grid gap-4">
-                <div>
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="confirm">Confirm password</Label>
-                  <Input
-                    id="confirm"
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                  />
-                </div>
-                <p className="text-xs text-warm-400">
-                  Everkeep derives an encryption key with Argon2id and encrypts sensitive fields with
-                  AES-256-GCM. The password is never stored.
-                </p>
-              </div>
-            )}
-
+            <p className="mt-3 text-sm text-warm-500">Keep access to this email account. You can invite other people to separate shared copies after creating your vault.</p>
             <div className="mt-8 flex justify-end">
-              <Button
-                onClick={() => {
-                  if (validateStep2()) setStep(3)
-                }}
-              >
-                Continue
-                <ArrowRight className="h-4 w-4" />
-              </Button>
+              <Button disabled={!account} onClick={() => { setError(null); setStep(3) }}>Continue<ArrowRight className="h-4 w-4" /></Button>
             </div>
           </div>
         )}
@@ -298,18 +227,19 @@ export function CreateVaultPage() {
               Where should we save your vault?
             </h1>
             <p className="mt-2 text-warm-500">
-              Your Everkeep Vault is a single file on your computer. Suggested default:
-              Documents/Everkeep/
+              Your Everkeep Vault is a single file on your computer. We’ll save it in
+              Documents/Everkeep unless you choose another location.
             </p>
 
             <div className="mt-8 rounded-xl border border-warm-200 bg-ivory-50 p-5">
+              <p className="mb-3 text-sm text-forest-700">Owner: {account?.email}</p>
               <p className="text-sm font-medium text-charcoal-800">Vault file</p>
               <p className="mt-1 break-all text-sm text-warm-500">
-                {filePath ?? 'No location selected yet'}
+                {filePath ?? 'Choose a location to continue.'}
               </p>
-              <Button className="mt-4" variant="secondary" onClick={() => void pickLocation()}>
+              <Button className="mt-4" variant="secondary" disabled={busy} onClick={() => void pickLocation()}>
                 <Folder className="h-4 w-4" />
-                Choose location
+                Change location
               </Button>
             </div>
 

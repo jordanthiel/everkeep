@@ -1,3 +1,6 @@
+import { LicenseService } from '../src/main/services/LicenseService'
+import { CreateVaultSchema, OpenVaultSchema } from '../src/shared/schemas/vault'
+import { fromError, ok } from '../src/main/ipc/result'
 import { queueAccessFile } from '../src/main/files/AccessFileRequests'
 import { authFixture } from '../tests/fixtures/sharing-auth'
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
@@ -41,9 +44,17 @@ app.whenReady().then(async () => {
     } catch (error) { outgoing.writeHead(500); outgoing.end(String(error)) }
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`; env.PUBLIC_URL = `${origin}/share`; process.env.EVERKEEP_SHARING_URL = origin
-  const service = new VaultService({ recentStore: new RecentVaultsStore(join(root, 'recent.json')), attachmentsRootFactory: id => join(root, id) })
-  const stop = registerSharingHandlers(() => service)
+  const license = new LicenseService({ licensePath: join(root, 'license.ekey') })
+  const service = new VaultService({ licenseService: license, recentStore: new RecentVaultsStore(join(root, 'recent.json')), attachmentsRootFactory: id => join(root, id) })
+  const { stop, createOwnerVault } = registerSharingHandlers(() => service, license)
   ipcMain.handle('sharing:openRequest', () => null)
+  ipcMain.handle(IpcChannels.license.getStatus, async () => ok(await license.refreshAccount(true)))
+  ipcMain.handle(IpcChannels.vault.create, async (_event, input) => { try { return ok(await createOwnerVault(CreateVaultSchema.parse(input))) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.open, async (_event, input) => { try { return ok(await service.openVerifiedVault(OpenVaultSchema.parse(input))) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.unlock, async (_event, password) => { try { return ok(await service.unlockVerifiedVault(password)) } catch (error) { return fromError(error) } })
+  ipcMain.handle(IpcChannels.vault.pickSavePath, () => ok(join(root, 'new-owner.everkeep')))
+  ipcMain.handle(IpcChannels.vault.getDefaultVaultDir, () => ok(root))
+
   const wrap = (channel: string, fn: () => unknown) => ipcMain.handle(channel, () => ({ ok: true, data: fn() }))
   ipcMain.handle(IpcChannels.vault.updateHandoff, (_event, input) => ({ ok: true, data: service.updateHandoff(input) }))
   wrap(IpcChannels.vault.getStatus, () => service.getStatus()); wrap(IpcChannels.vault.getDashboard, () => service.getDashboard()); wrap(IpcChannels.vault.getHandoff, () => service.getHandoff()); wrap(IpcChannels.app.getUpdateStatus, () => ({ state: 'idle' })); ipcMain.handle(IpcChannels.app.getBackupOpenRequest, () => null)
@@ -53,10 +64,37 @@ app.whenReady().then(async () => {
   const execute = async (window: BrowserWindow, source: string) => { try { return await window.webContents.executeJavaScript(source) } catch (error) { throw new Error(`Failed browser action: ${source.slice(0, 220)}\n${await window.webContents.executeJavaScript('document.body.innerText')}`, { cause: error }) } }
   async function until(window: BrowserWindow, source: string) { for (let i = 0; i < 160; i++) { if (await execute(window, source)) return; await pause(50) } throw new Error(`Timed out ${source}\n${await execute(window, 'document.body.innerText')}`) }
   async function click(window: BrowserWindow, label: string) { await execute(window, `(() => { const button = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === ${JSON.stringify(label)}); if (!button || button.disabled) throw new Error('Unavailable button ' + ${JSON.stringify(label)}); for (let node = button.parentElement; node; node = node.parentElement) if (node.tagName === 'DETAILS') node.open = true; button.click() })()`); await pause(80) }
-  async function fill(window: BrowserWindow, label: string, value: string) { await execute(window, `(() => { const item = [...document.querySelectorAll('label')].find(l => l.textContent.includes(${JSON.stringify(label)})); const field = item?.querySelector('input,textarea'); if (!field) throw new Error('Missing field ' + ${JSON.stringify(label)}); const type = field.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement; Object.getOwnPropertyDescriptor(type.prototype,'value').set.call(field,${JSON.stringify(value)}); field.dispatchEvent(new Event('input',{bubbles:true})) })()`); await pause(50) }
+  async function fill(window: BrowserWindow, label: string, value: string) { await execute(window, `(() => { const item = [...document.querySelectorAll('label')].find(l => l.textContent.includes(${JSON.stringify(label)})); const field = item?.querySelector('input,textarea') || (item?.htmlFor ? document.getElementById(item.htmlFor) : null); if (!field) throw new Error('Missing field ' + ${JSON.stringify(label)}); const type = field.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement; Object.getOwnPropertyDescriptor(type.prototype,'value').set.call(field,${JSON.stringify(value)}); field.dispatchEvent(new Event('input',{bubbles:true})) })()`); await pause(50) }
   async function openRecord(window: BrowserWindow, title: string) { await until(window, "document.body.innerText.includes('All information') && document.querySelector('.ek-record-link, .ek-library-filters') !== null"); await click(window, 'All information'); await until(window, "document.querySelector('.ek-library-filters') !== null"); await execute(window, `(() => { const item = [...document.querySelectorAll('.ek-record-link strong')].find(node => node.textContent === ${JSON.stringify(title)}); if (!item) throw new Error('Missing record'); item.closest('button').click() })()`); await pause(80) }
   async function signIn(window: BrowserWindow, email: string) { await until(window, "document.body.innerText.includes('Email me a sign-in code')"); await fill(window, 'Email address', email); await click(window, 'Email me a sign-in code'); await until(window, "document.body.innerText.includes('Six-digit code')"); const code = mails.filter(mail => mail.to === email).at(-1)!.text.match(/\b\d{6}\b/)![0]; await fill(window, 'Six-digit code', code); await click(window, 'Verify and continue'); await until(window, "document.body.textContent.includes('Signed in as')") }
   try {
+    await desktop.loadFile(resolve('out/renderer/index.html'), { hash: '/create-vault' })
+    await fill(desktop, 'First name', 'Jordan'); await fill(desktop, 'Last name', 'Owner')
+    await click(desktop, 'Continue')
+    await until(desktop, "document.body.innerText.includes('Email me a sign-in code')")
+    assert.equal(await execute(desktop, "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Continue').disabled"), true)
+    await signIn(desktop, 'new-owner@example.com')
+    writeFileSync(resolve('.everkeep-temp/owner-verification.png'), (await desktop.webContents.capturePage()).toPNG())
+    await click(desktop, 'Continue'); await click(desktop, 'Change location'); await click(desktop, 'Create Vault')
+    await until(desktop, "location.hash === '#/'")
+    assert.equal(service.getStatus().session?.metadata.ownerEmail, 'new-owner@example.com')
+    assert.equal(JSON.parse(readFileSync(join(root, 'new-owner.everkeep'), 'utf8')).format, 'everkeep-owner-encrypted')
+    assert.equal(license.isPaid(), false)
+    db.prepare('INSERT INTO billing_orders(session_id,payment_intent,email,created_at) VALUES(?,?,?,?)').run('cs_ui_purchase', 'pi_ui_purchase', 'new-owner@example.com', new Date().toISOString())
+    await desktop.loadFile(resolve('out/renderer/index.html'), { hash: '/settings' })
+    await until(desktop, "document.body.innerText.includes('Lifetime active for new-owner@example.com')")
+    assert.equal(license.isPaid(), true)
+    assert.equal(await execute(desktop, "document.body.innerText.includes('Paste license key')"), false)
+    writeFileSync(resolve('.everkeep-temp/email-billing.png'), (await desktop.webContents.capturePage()).toPNG())
+    await execute(desktop, 'window.everkeep.sharing.logout()')
+    assert.equal(license.isPaid(), false)
+    await until(desktop, "document.body.innerText.includes('Vault locked')")
+    await signIn(desktop, 'new-owner@example.com')
+    assert.equal(license.isPaid(), true)
+    await click(desktop, 'Verify access and continue')
+    await until(desktop, "location.hash === '#/'")
+    assert.equal(service.getStatus().session?.isLocked, false)
+    await execute(desktop, 'window.everkeep.sharing.logout()'); service.closeVault()
     service.createVault({ name: 'Family sharing fixture', filePath: join(root, 'family.everkeep') })
     const recipient = service.createPerson({ fullName: 'Child Recipient', email: 'child@example.com' })
     const record = service.createEntry({ section: 'documents', title: 'Care directions', notes: 'Original directions' })

@@ -1,4 +1,11 @@
+export interface OwnerProtection {
+  vaultId: string
+  ownerId: string
+  email: string
+}
+
 export interface VaultMetadata {
+  ownerEmail?: string
   id: string
   name: string
   householdName: string | null
@@ -15,6 +22,7 @@ export interface VaultMetadata {
 }
 
 export interface CreateVaultInput {
+  ownerEmail?: string
   name: string
   filePath: string
   householdName?: string

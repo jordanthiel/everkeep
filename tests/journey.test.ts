@@ -73,6 +73,17 @@ describe('clear completion status', () => {
     expect(groupProgress(JOURNEY_GROUPS[0], { people: 'in-progress' }).status).toBe('In progress')
     expect(groupProgress(JOURNEY_GROUPS[0], {}).status).toBe('Not started')
   })
+  it('starts fresh with setup contacts and resumes after user activity', () => {
+    for (const people of [1, 2]) {
+      const initial = { people }
+      const fresh = withSavedTopics({}, { people }, initial)
+      expect(fresh).toEqual({})
+      expect(groupProgress(JOURNEY_GROUPS[0], fresh).status).toBe('Not started')
+      expect(withSavedTopics({}, { people: people + 1 }, initial)).toEqual({ people: 'in-progress' })
+      expect(withSavedTopics({ people: 'in-progress' }, { people }, initial)).toEqual({ people: 'in-progress' })
+      expect(withSavedTopics({}, { people, identity: 1 }, initial)).toEqual({ identity: 'in-progress' })
+    }
+  })
   it('uses explicit actions and resumes unfinished topics', () => {
     expect([topicAction(), topicAction('in-progress'), topicAction('reviewed'), topicAction('need-to-find')]).toEqual(['Start', 'Continue', 'Edit', 'Review'])
     expect(nextTopicPath('people', { identity: 'in-progress' })).toBe('/guide/identity')

@@ -1,3 +1,4 @@
+import { OwnerVerification } from '@renderer/components/OwnerVerification'
 import { isBackupPath, backupRestorePath } from '@shared/backupFiles'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -19,6 +20,7 @@ export function WelcomePage() {
   const [openingPath, setOpeningPath] = useState<string | null>(null)
   const [passwordPromptPath, setPasswordPromptPath] = useState<string | null>(null)
   const [password, setPassword] = useState('')
+  const [emailPromptPath, setEmailPromptPath] = useState<string | null>(null)
 
   useEffect(() => {
     void (async () => {
@@ -40,11 +42,16 @@ export function WelcomePage() {
       )
       setSession(session)
       setPasswordPromptPath(null)
+      setEmailPromptPath(null)
       setPassword('')
       navigate('/')
     } catch (err) {
       if (err instanceof ApiError && err.code === 'SHARED_FILE') {
         navigate(`/shared?vault=${encodeURIComponent(err.message)}`)
+      } else if (err instanceof ApiError && err.code === 'EMAIL_REQUIRED') {
+        setPasswordPromptPath(null)
+        setEmailPromptPath(filePath)
+        setError(err.message)
       } else if (err instanceof ApiError && err.code === 'PASSWORD_REQUIRED') {
         setPasswordPromptPath(filePath)
         setError(null)
@@ -102,6 +109,10 @@ export function WelcomePage() {
           </Button>
         </div>
 
+        {emailPromptPath && <div className="mt-6 rounded-xl border border-warm-200 p-5">
+          <OwnerVerification busy={Boolean(openingPath)} onContinue={() => void openPath(emailPromptPath)} />
+          <Button variant="ghost" onClick={() => { setEmailPromptPath(null); setError(null) }}>Cancel</Button>
+        </div>}
         {passwordPromptPath && (
           <div className="mt-8 rounded-xl border border-warm-200 bg-ivory-50/90 p-5">
             <h2 className="font-medium text-charcoal-900">Password required</h2>

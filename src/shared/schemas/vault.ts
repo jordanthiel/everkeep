@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 export const CreateVaultSchema = z.object({
+  ownerEmail: z.string().trim().email().max(200).transform(value => value.toLowerCase()),
   name: z.string().min(1, 'Vault name is required').max(200),
   filePath: z.string().min(1, 'File path is required'),
   householdName: z.string().max(200).optional(),
@@ -35,7 +36,7 @@ export const PickBackupPathSchema = z.object({
 })
 
 export const UnlockVaultSchema = z.object({
-  password: z.string().min(1).max(256)
+  password: z.string().max(256)
 })
 
 export const RotatePasswordSchema = z.object({

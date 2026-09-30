@@ -1,0 +1,7 @@
+{
+  "redirects": [{ "source": "/share", "destination": "/share/", "permanent": true }],
+  "rewrites": [
+    { "source": "/share/", "destination": "/share/index.html" },
+    { "source": "/buy/success", "destination": "/index.html" }
+  ]
+}

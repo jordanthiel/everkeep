@@ -12,7 +12,7 @@ import { HandoffRepository } from '../repositories/HandoffRepository'
 import type { HandoffInput, BackupCheck } from '../../shared/types/handoff'
 import type { ExportOptions } from '../../shared/types/entry'
 import { createHash, randomUUID } from 'crypto'
-import { atomicWrite, decodeProtectedFile, encodeProtectedFile, isProtectedFile } from '../security/ProtectedVaultFile'
+import { atomicWrite, ownerProtection, decodeProtectedFile, encodeProtectedFile, isProtectedFile } from '../security/ProtectedVaultFile'
 import { basename, join, resolve, sep } from 'path'
 import {
   withTransaction,
@@ -50,6 +50,7 @@ import {
   FREE_ENTRY_CAP
 } from '../../shared/constants'
 import type {
+  OwnerProtection,
   BackupVaultInput,
   CreateVaultInput,
   OpenVaultInput,
@@ -111,6 +112,26 @@ export interface VaultServiceOptions {
 }
 
 export class VaultService {
+  private ownerSecretResolver: ((owner: OwnerProtection) => Promise<string>) | null = null
+  setOwnerSecretResolver(resolve: (owner: OwnerProtection) => Promise<string>) { this.ownerSecretResolver = resolve }
+
+  private async authorizeOwner(bytes: Buffer): Promise<{ password?: string; owner?: OwnerProtection }> {
+    const owner = ownerProtection(bytes)
+    if (!owner) return {}
+    if (!this.ownerSecretResolver) throw new VaultServiceError('Verify your email online to open this vault.', 'EMAIL_REQUIRED')
+    return { password: await this.ownerSecretResolver(owner), owner }
+  }
+
+  async openVerifiedVault(input: OpenVaultInput): Promise<VaultSession> {
+    const authorization = await this.authorizeOwner(readFileSync(ensureVaultExtension(input.filePath)))
+    return this.openVault({ ...input, password: authorization.password ?? input.password }, authorization.owner)
+  }
+
+  async unlockVerifiedVault(password: string): Promise<VaultSession> {
+    if (!this.lockedSession) return this.unlockVault(password)
+    return this.openVerifiedVault({ filePath: this.lockedSession.filePath, password })
+  }
+
   private db: VaultDatabase | null = null
   private lockedSession: VaultSession | null = null
   private savedDigest: string | null = null
@@ -165,7 +186,7 @@ export class VaultService {
     return this.recentStore.list().filter((item) => existsSync(item.filePath))
   }
 
-  createVault(input: CreateVaultInput): VaultSession {
+  createVault(input: CreateVaultInput, ownership?: { sourceId: string; owner: OwnerProtection }): VaultSession {
     const filePath = ensureVaultExtension(input.filePath)
     ensureParentDirectory(filePath)
 
@@ -196,7 +217,9 @@ export class VaultService {
         key = material.key
       }
 
+      if (ownership) repo.setOwnerProtection(ownership.owner)
       const metadata = repo.createMetadata({
+        id: ownership?.sourceId,
         name: input.name,
         householdName: input.householdName,
         ownerFirstName: input.ownerFirstName,
@@ -226,6 +249,7 @@ export class VaultService {
           people.create({
             fullName: ownerName.trim(),
             relationship: 'self',
+            email: ownership?.owner.email ?? input.ownerEmail,
             dateOfBirth: input.ownerDateOfBirth ?? null,
             notes: 'Vault owner'
           })
@@ -276,7 +300,7 @@ export class VaultService {
     }
   }
 
-  openVault(input: OpenVaultInput): VaultSession {
+  openVault(input: OpenVaultInput, authorizedOwner?: OwnerProtection): VaultSession {
     const filePath = ensureVaultExtension(input.filePath)
     if (!existsSync(filePath)) throw new VaultServiceError('Vault file not found.', 'VAULT_NOT_FOUND')
     // Validate the incoming vault before closing the current one.
@@ -287,7 +311,7 @@ export class VaultService {
       const bytes = readFileSync(filePath)
       encrypted = isProtectedFile(bytes)
       if (encrypted) {
-        const decoded = decodeProtectedFile(bytes, input.password)
+        const decoded = decodeProtectedFile(bytes, input.password, authorizedOwner)
         key = decoded.key
         try { db = openMemoryDatabase(decoded.bytes) } finally { decoded.bytes.fill(0) }
       } else {
@@ -309,6 +333,10 @@ export class VaultService {
       if (!repo.getMetadata()) throw new VaultServiceError('Vault metadata is missing.', 'VAULT_INVALID')
       if (!key && repo.getMetadata()?.isPasswordProtected) repo.setPasswordProtection({ isPasswordProtected: false, passwordVerifier: null, encryptionSalt: null, encryptionParams: null })
       const metadata = repo.getMetadata()!
+      const storedOwner = repo.getOwnerProtection()
+      if ((storedOwner || authorizedOwner) && (!storedOwner || !authorizedOwner || storedOwner.vaultId !== authorizedOwner.vaultId || storedOwner.ownerId !== authorizedOwner.ownerId)) {
+        throw new VaultServiceError('Vault ownership could not be verified.', 'EMAIL_REQUIRED')
+      }
       const obsoletePaths = key && new AttachmentRepository(db).countActive() > 0 ? new AttachmentService(db, metadata.id, this.attachmentsRootFactory(metadata.id), true).importLocalAttachments() : []
       if (this.db || this.lockedSession) this.closeVault()
       this.db = db
@@ -345,15 +373,19 @@ export class VaultService {
       throw new VaultServiceError('This vault is not password protected.', 'NOT_PROTECTED')
     }
 
-    this.persistProtectedVault()
-    this.reportPreview = null
-    clearOpenedAttachments()
-    if (this.db) closeDatabase(this.db)
-    this.db = null
-    this.encryption.clearKey(this.encryptionKey)
-    this.encryptionKey = null
-    this.isLocked = true
-    this.lockedSession = { ...status.session, isLocked: true }
+    // Always discard decrypted state, even if an external file change prevents saving.
+    try {
+      this.persistProtectedVault()
+    } finally {
+      this.reportPreview = null
+      clearOpenedAttachments()
+      if (this.db) closeDatabase(this.db)
+      this.db = null
+      this.encryption.clearKey(this.encryptionKey)
+      this.encryptionKey = null
+      this.isLocked = true
+      this.lockedSession = { ...status.session, isLocked: true }
+    }
     return this.lockedSession
   }
 
@@ -369,6 +401,7 @@ export class VaultService {
   rotatePassword(currentPassword: string, newPassword: string): VaultSession {
     this.requireOpenDb()
     const repo = new VaultRepository(this.db!)
+    if (repo.getOwnerProtection()) throw new VaultServiceError('This vault is protected by verified email, not a local password.', 'EMAIL_PROTECTED')
     const material = repo.getEncryptionMaterial()
     const metadata = repo.getMetadata()
     if (!metadata) throw new VaultServiceError('Vault metadata is missing.', 'VAULT_INVALID')
@@ -499,16 +532,18 @@ export class VaultService {
     const file = zip.file('vault.everkeep')
     if (!file) throw new VaultServiceError('This backup does not contain a vault.', 'INVALID_BACKUP')
     let bytes = await file.async('nodebuffer')
+    const authorization = await this.authorizeOwner(bytes)
+    const password = authorization.password ?? input.password
     let key: Buffer | null = null
     let staged: VaultDatabase | null = null
     try {
-      if (isProtectedFile(bytes)) { const decoded = decodeProtectedFile(bytes, input.password); bytes = decoded.bytes; key = decoded.key }
+      if (isProtectedFile(bytes)) { const decoded = decodeProtectedFile(bytes, password, authorization.owner); bytes = decoded.bytes; key = decoded.key }
       staged = openMemoryDatabase(bytes)
       if (!verifyIntegrity(staged).ok) throw new Error('Backup failed its database integrity check.')
       runMigrations(staged)
       const material = new VaultRepository(staged).getEncryptionMaterial()
       if (!key && material?.isPasswordProtected && material.encryptionSalt && material.encryptionParams && material.passwordVerifier) {
-        key = this.encryption.verifyPassword(input.password ?? '', material.encryptionSalt, material.encryptionParams, material.passwordVerifier)
+        key = this.encryption.verifyPassword(password ?? '', material.encryptionSalt, material.encryptionParams, material.passwordVerifier)
         if (!key) throw new VaultServiceError('Incorrect backup password.', 'PASSWORD_INCORRECT')
       }
       for (const attachment of new AttachmentRepository(staged).listAllActive()) {
@@ -522,13 +557,13 @@ export class VaultService {
       }
       ensureParentDirectory(destination)
       if (existsSync(destination)) throw new VaultServiceError('A file already exists at the destination.', 'VAULT_EXISTS')
-      atomicWrite(destination, key ? encodeProtectedFile(staged.serialize(), key, material!) : staged.serialize())
+      atomicWrite(destination, key ? encodeProtectedFile(staged.serialize(), key, material!, new VaultRepository(staged).getOwnerProtection()) : staged.serialize())
     } finally {
       if (staged) closeDatabase(staged)
       bytes.fill(0)
       this.encryption.clearKey(key)
     }
-    return this.openVault({ filePath: destination, password: input.password })
+    return this.openVerifiedVault({ filePath: destination, password: input.password })
   }
 
   getSharingSnapshot() { return new SharedVaultAdapter(this.requireOpenDb(), this.encryption, this.encryptionKey).snapshot() }
@@ -586,11 +621,13 @@ export class VaultService {
     const file = zip.file('vault.everkeep')
     if (!file) throw new VaultServiceError('This is not an Everkeep backup.', 'INVALID_BACKUP')
     let bytes = await file.async('nodebuffer')
+    const authorization = await this.authorizeOwner(bytes)
+    const password = authorization.password ?? input.password
     let key: Buffer | null = null
     let db: VaultDatabase | null = null
     try {
       if (isProtectedFile(bytes)) {
-        const decoded = decodeProtectedFile(bytes, input.password)
+        const decoded = decodeProtectedFile(bytes, password, authorization.owner)
         bytes = decoded.bytes
         key = decoded.key
       }
@@ -601,7 +638,7 @@ export class VaultService {
       if (!metadata) throw new Error('The backup has no vault metadata.')
       const material = new VaultRepository(db).getEncryptionMaterial()
       if (!key && material?.isPasswordProtected && material.encryptionSalt && material.encryptionParams && material.passwordVerifier) {
-        key = this.encryption.verifyPassword(input.password ?? '', material.encryptionSalt, material.encryptionParams, material.passwordVerifier)
+        key = this.encryption.verifyPassword(password ?? '', material.encryptionSalt, material.encryptionParams, material.passwordVerifier)
         if (!key) throw new Error('Enter the password used when this backup was made.')
       }
       const attachments = new AttachmentRepository(db).listAllActive()
@@ -930,7 +967,7 @@ export class VaultService {
     if (!this.db || !this.encryptionKey || !this.filePath) return
     if (this.savedDigest && this.fileDigest() !== this.savedDigest) throw new VaultServiceError('The vault file changed outside this session. Reopen it before making more changes.', 'VAULT_CHANGED')
     const material = new VaultRepository(this.db).getEncryptionMaterial()!
-    atomicWrite(this.filePath, encodeProtectedFile(this.db.serialize(), this.encryptionKey, material))
+    atomicWrite(this.filePath, encodeProtectedFile(this.db.serialize(), this.encryptionKey, material, new VaultRepository(this.db).getOwnerProtection()))
     this.savedDigest = this.fileDigest()
   }
 

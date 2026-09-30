@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { VaultDatabase } from '../database/connection'
-import type { VaultMetadata } from '../../shared/types/vault'
+import type { OwnerProtection, VaultMetadata } from '../../shared/types/vault'
 import { getLatestSchemaVersion } from '../database/migrations'
 
 interface VaultMetadataRow {
@@ -38,6 +38,8 @@ function mapRow(row: VaultMetadataRow): VaultMetadata {
 }
 
 export interface CreateVaultMetadataInput {
+  id?: string
+
   name: string
   householdName?: string
   ownerFirstName?: string
@@ -56,7 +58,7 @@ export class VaultRepository {
   constructor(private readonly db: VaultDatabase) {}
 
   createMetadata(input: CreateVaultMetadataInput): VaultMetadata {
-    const id = uuidv4()
+    const id = input.id ?? uuidv4()
     const now = new Date().toISOString()
     const schemaVersion = getLatestSchemaVersion()
 
@@ -95,11 +97,20 @@ export class VaultRepository {
     return metadata
   }
 
+  getOwnerProtection(): OwnerProtection | null {
+    const row = this.db.prepare("SELECT value FROM app_settings WHERE key = 'ownerProtection'").get() as { value: string } | undefined
+    return row ? JSON.parse(row.value) as OwnerProtection : null
+  }
+
+  setOwnerProtection(value: OwnerProtection): void {
+    this.db.prepare("INSERT INTO app_settings(key,value) VALUES('ownerProtection',?)").run(JSON.stringify(value))
+  }
+
   getMetadata(): VaultMetadata | null {
     const row = this.db.prepare('SELECT * FROM vault_metadata LIMIT 1').get() as
       | VaultMetadataRow
       | undefined
-    return row ? mapRow(row) : null
+    return row ? { ...mapRow(row), ownerEmail: this.getOwnerProtection()?.email } : null
   }
 
   updateMetadata(

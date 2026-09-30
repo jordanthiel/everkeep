@@ -11,7 +11,17 @@ export interface LicenseClaims {
   orderId: string
 }
 
+export interface AccountPurchase {
+  email: string
+  product: 'free' | 'lifetime'
+  orderId: string | null
+  issuedAt: string | null
+}
+
 export interface LicenseStatus {
+  source?: 'account' | 'legacy' | 'free'
+  verificationError?: string | null
+
   entitlement: LicenseEntitlement
   activated: boolean
   email: string | null

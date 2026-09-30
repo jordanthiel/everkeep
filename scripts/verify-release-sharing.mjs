@@ -16,8 +16,8 @@ if (process.argv.includes('--built')) {
   const response = await fetch(`${value}/api/config`, { signal: AbortSignal.timeout(15000) })
   if (!response.ok) throw new Error(`Sharing service configuration returned HTTP ${response.status}.`)
   const config = await response.json()
-  if (!Array.isArray(config.capabilities) || !config.capabilities.includes('file-sharing-v1')) {
-    throw new Error('Deploy the current sharing function before releasing desktop clients: file-sharing-v1 is required.')
+  if (!Array.isArray(config.capabilities) || !['file-sharing-v1', 'owner-vault-v1', 'email-billing-v1'].every(capability => config.capabilities.includes(capability))) {
+    throw new Error('Deploy the current sharing function before releasing desktop clients: file-sharing-v1, owner-vault-v1, and configured email-billing-v1 are required.')
   }
   const portal = new URL(config.portalUrl)
   if (portal.protocol !== 'https:' || portal.username || portal.password) throw new Error('Sharing service must provide an HTTPS portal URL.')

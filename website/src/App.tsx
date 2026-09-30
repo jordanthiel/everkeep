@@ -182,7 +182,7 @@ function LandingPage() {
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-charcoal-700">
                 One-time payment for unlimited entries and attachments, clean exports, and continued
-                updates. No subscription required to keep your vault open.
+                updates. Use the same email at checkout and in the app—your purchase is restored automatically, with no license key.
               </p>
               <a
                 href={checkout.paymentLink}

@@ -1,3 +1,4 @@
+import { accountCheckout, accountEntitlement, stripeWebhook, BillingError } from './billing.ts'
 import { z } from 'zod'
 import { GrantSchema, InvitationSchema, SharedSnapshotSchema, invitationText, visibleRecords, recordContent, type SharedSnapshot, type ShareScope } from './schema.ts'
 
@@ -96,7 +97,8 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
       if (!env.AUTH_SECRET || env.AUTH_SECRET.length < 32 || !env.DATA_KEY) throw new HttpError(503, 'Sharing service is not configured.')
       const origin = request.headers.get('Origin')
       if (origin && origin !== new URL(env.PUBLIC_URL).origin) throw new HttpError(403, 'Origin not allowed.')
-      if (path === '/api/config' && request.method === 'GET') return json({ portalUrl: env.PUBLIC_URL, capabilities: ['file-sharing-v1'] })
+      if (path === '/api/billing/webhook' && request.method === 'POST') return json(await stripeWebhook(env, new TextDecoder().decode(await readBytes(request, 1024 * 1024)), request.headers.get('stripe-signature')))
+      if (path === '/api/config' && request.method === 'GET') return json({ portalUrl: env.PUBLIC_URL, capabilities: ['file-sharing-v1', 'owner-vault-v1', ...(env.STRIPE_WEBHOOK_SECRET && env.STRIPE_SECRET_KEY && env.STRIPE_LIFETIME_PRICE_ID && env.STRIPE_PAYMENT_LINK_URL ? ['email-billing-v1'] : [])] })
       if (path === '/api/auth/request' && request.method === 'POST') {
         const { email } = z.object({ email: emailSchema }).parse(await body(request, 2000))
         await limit(env, `email:${await digest(email)}`, 5, 15 * 60000)
@@ -122,6 +124,8 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
         return json(await env.AUTH.refresh(refreshToken))
       }
       const user = await currentUser(env, request)
+      if (path === '/api/billing/entitlement' && request.method === 'GET') return json(await accountEntitlement(env, user))
+      if (path === '/api/billing/checkout' && request.method === 'GET') return json(accountCheckout(env, user))
       if (path === '/api/account' && request.method === 'GET') return json(user)
       if (path === '/api/auth/logout' && request.method === 'POST') {
         await env.AUTH.logout(request.headers.get('Authorization')!.slice(7))
@@ -160,6 +164,21 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
       if (!match) throw new HttpError(404, 'Not found')
       const id = idSchema.parse(match[1]), tail = match[2] || ''
       const { vault, role, scope } = await access(env, user, id, tail === 'accept')
+      if (tail === 'owner-key' && ['GET', 'POST'].includes(request.method)) {
+        requireOwner(role)
+        // Kept separate from recipient keys: even an all-record collaborator cannot unlock the original.
+        if (request.method === 'POST') {
+          const secret = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))))
+          const sealed = await encrypt(env, encoder.encode(secret), `owner:${id}`)
+          const payload = btoa(Array.from(sealed, b => String.fromCharCode(b)).join(''))
+          await env.DB.prepare('INSERT INTO owner_vault_keys(vault_id,key_payload) VALUES(?,?) ON CONFLICT(vault_id) DO NOTHING').bind(id, payload).run()
+        }
+        const row = await env.DB.prepare('SELECT key_payload FROM owner_vault_keys WHERE vault_id=?').bind(id).first<{ key_payload: string }>()
+        if (!row) throw new HttpError(404, 'Owner protection is not registered for this vault.')
+        const sealed = Uint8Array.from(atob(row.key_payload), c => c.charCodeAt(0))
+        const secret = new TextDecoder().decode(await decrypt(env, sealed.buffer, `owner:${id}`))
+        return json({ secret, owner: user, vaultId: id })
+      }
       if (tail === 'file-packages' && request.method === 'POST') {
         requireOwner(role)
         const { recordIds } = z.object({ recordIds: z.array(idSchema).max(10000).refine(ids => new Set(ids).size === ids.length) }).strict().parse(await body(request, 500000))
@@ -298,7 +317,7 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
       }
       throw new HttpError(404, 'Not found')
     } catch (error) {
-      if (error instanceof HttpError || error instanceof AuthError) return json({ error: error.message }, error.status)
+      if (error instanceof HttpError || error instanceof AuthError || error instanceof BillingError) return json({ error: error.message }, error.status)
       if (error instanceof z.ZodError) return json({ error: error.issues.map(issue => issue.message).join('; ') }, 400)
       return json({ error: 'The sharing service could not complete this request.' }, 500)
     }

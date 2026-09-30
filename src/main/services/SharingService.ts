@@ -1,10 +1,15 @@
+import type { LicenseService } from './LicenseService'
+import { z } from 'zod'
+import type { CreateVaultInput, OwnerProtection } from '../../shared/types/vault'
+import { VaultServiceError } from './VaultService'
+import { ensureVaultExtension } from '../files/paths'
 import { createAccessFile } from '../../shared/accessFile'
 import type { FileAccess } from '../../shared/sharing'
 import { SharingTransport } from '../../shared/sharingTransport'
-import { app, safeStorage } from 'electron'
+import { app, safeStorage, BrowserWindow } from 'electron'
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'fs'
 import { join } from 'path'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import type { VaultService } from './VaultService'
 import type { SharingLink } from '../repositories/SharingLinkRepository'
 import { mergeSnapshots, recordContent, type SharedSnapshot, type SharedVaultView, type SharingAccount, type SharingStatus } from '../../shared/sharing'
@@ -21,11 +26,12 @@ export class SharingService {
   private editing = false
   private conflict: SyncConflicts | null = null
   private generation = 0
+  private accountId: string | null = null
   private activeFile: string | null = null
   private readonly authFile: string
   private portalUrl = ''
   readonly url: string
-  constructor(private readonly vault: VaultService, url = process.env.EVERKEEP_SHARING_URL || process.env.EVERKEEP_SHARING_BUILD_URL || '') {
+  constructor(private readonly vault: VaultService, url = process.env.EVERKEEP_SHARING_URL || process.env.EVERKEEP_SHARING_BUILD_URL || '', private readonly license?: LicenseService) {
     this.url = url.replace(/\/$/, '')
     if (this.url) { const parsed = new URL(this.url); if (parsed.protocol !== 'https:' && !(['localhost', '127.0.0.1'].includes(parsed.hostname) && parsed.protocol === 'http:')) throw new Error('Sharing requires HTTPS.') }
     this.authFile = join(app.getPath('userData'), 'sharing-session.bin')
@@ -34,13 +40,60 @@ export class SharingService {
       try { const stored = JSON.parse(safeStorage.decryptString(readFileSync(this.authFile))); if (stored.url === this.url) saved = stored } catch { /* Ask for a fresh sign-in when the OS keychain changes. */ }
     }
     this.transport = new SharingTransport(this.url, session => {
-      if (!session || session.account.id !== this.account?.id) this.generation++
+      if (!session || session.account.id !== this.accountId) {
+        this.generation++
+        this.lockOwnerVault()
+      }
+      this.license?.setAccount(session?.account ?? null)
+      this.accountId = session?.account.id ?? null
       if (session && safeStorage.isEncryptionAvailable()) writeFileSync(this.authFile, safeStorage.encryptString(JSON.stringify({ url: this.url, ...session })), { mode: 0o600 })
       else rmSync(this.authFile, { force: true })
     }, saved)
+    this.license?.connectAccount(
+      async () => z.object({ email: z.string().email(), product: z.enum(['free', 'lifetime']), orderId: z.string().nullable(), issuedAt: z.string().nullable() }).parse(await this.request('/billing/entitlement')),
+      async () => z.object({ url: z.string().url() }).parse(await this.request('/billing/checkout')).url
+    )
+    this.license?.setAccount(this.account)
+    void this.license?.refreshAccount()
+    this.accountId = this.account?.id ?? null
+    vault.setOwnerSecretResolver(owner => this.ownerSecret(owner))
   }
-  start() { if (this.timer) return; this.timer = setInterval(() => { if (this.account && !this.editing && this.vault.getStatus().session && !this.vault.getStatus().session?.isLocked && this.vault.getSharingLink() && this.vault.getSharingLink()?.storage !== 'file') void this.sync().catch(() => {}) }, 15000); this.timer.unref() }
-  stop() { if (this.timer) clearInterval(this.timer); this.generation++; this.transport.session = null; this.conflict = null }
+  private lockOwnerVault() {
+    const current = this.vault.getStatus().session
+    if (!current?.metadata.ownerEmail || current.isLocked) return
+    // A save conflict must not leave an old identity's decrypted vault in memory.
+    try { this.vault.lockVault() } catch { /* lockVault clears keys even if saving fails. */ }
+    const locked = this.vault.getStatus().session
+    if (locked?.isLocked) for (const window of BrowserWindow.getAllWindows()) window.webContents.send('vault:locked', locked)
+  }
+
+  async ownerSecret(owner: OwnerProtection): Promise<string> {
+    if (!this.account || this.account.id !== owner.ownerId) throw new VaultServiceError(`Sign in as ${owner.email} to open this vault.`, 'EMAIL_REQUIRED')
+    const generation = this.generation
+    try {
+      const result = z.object({ secret: z.string().regex(/^[A-Za-z0-9+/]{43}=$/), owner: z.object({ id: z.string().uuid(), email: z.string().email() }), vaultId: z.string().uuid() }).parse(await this.request(`/vaults/${owner.vaultId}/owner-key`))
+      if (generation !== this.generation || result.owner.id !== owner.ownerId || result.vaultId !== owner.vaultId) throw new Error('Your account changed. Verify your email again.')
+      return result.secret
+    } catch (error) {
+      throw new VaultServiceError(error instanceof Error ? error.message : 'Connect to the internet and verify your email.', 'EMAIL_REQUIRED')
+    }
+  }
+
+  async createOwnerVault(input: CreateVaultInput) {
+    if (!this.account || this.account.email.toLowerCase() !== input.ownerEmail?.trim().toLowerCase()) throw new VaultServiceError('Verify your owner email before creating a vault.', 'EMAIL_REQUIRED')
+    if (existsSync(ensureVaultExtension(input.filePath))) throw new VaultServiceError('A vault already exists at this location.', 'VAULT_EXISTS')
+    const generation = this.generation, account = this.account, sourceId = randomUUID()
+    const registration = await this.request<{ id: string }>('/file-vaults', 'POST', { sourceId, name: input.name })
+    const result = z.object({ secret: z.string().regex(/^[A-Za-z0-9+/]{43}=$/), owner: z.object({ id: z.string().uuid(), email: z.string().email() }), vaultId: z.string().uuid() }).parse(await this.request(`/vaults/${registration.id}/owner-key`, 'POST', {}))
+    if (generation !== this.generation || result.owner.id !== account.id || result.vaultId !== registration.id) throw new VaultServiceError('Your account changed. Verify your email again.', 'EMAIL_REQUIRED')
+    const owner = { vaultId: registration.id, ownerId: account.id, email: result.owner.email }
+    const session = this.vault.createVault({ ...input, password: result.secret }, { sourceId, owner })
+    this.vault.saveSharingLink({ serviceUrl: this.url, remoteId: registration.id, ownerId: account.id, ownerEmail: owner.email, storage: 'file', revision: 1, base: { name: input.name, records: [] }, lastSyncedAt: '' })
+    return session
+  }
+
+  start() { if (this.timer) return; this.timer = setInterval(() => { void this.license?.refreshAccount(); if (this.account && !this.editing && this.vault.getStatus().session && !this.vault.getStatus().session?.isLocked && this.vault.getSharingLink() && this.vault.getSharingLink()?.storage !== 'file') void this.sync().catch(() => {}) }, 15000); this.timer.unref() }
+  stop() { this.license?.setAccount(null); if (this.timer) clearInterval(this.timer); this.generation++; this.transport.session = null; this.conflict = null }
   setEditing(value: boolean) { this.editing = value }
   getConflicts() { return this.conflict }
   async loadConfiguration() {
@@ -59,8 +112,13 @@ export class SharingService {
   }
   request<T>(path: string, method = 'GET', input?: unknown): Promise<T> { return this.transport.request<T>(path, method, input) }
   requestCode(email: string) { return this.request<{ challengeId: string }>('/auth/request', 'POST', { email }) }
-  verifyCode(challengeId: string, email: string, code: string) { this.generation++; return this.transport.verify(challengeId, email, code) }
-  async logout() { this.generation++; this.conflict = null; await this.transport.logout() }
+  async verifyCode(challengeId: string, email: string, code: string) {
+    this.generation++
+    const account = await this.transport.verify(challengeId, email, code)
+    await this.license?.refreshAccount(true)
+    return account
+  }
+  async logout() { this.license?.setAccount(null); this.generation++; this.conflict = null; this.lockOwnerVault(); await this.transport.logout() }
   async registerFile() {
     await this.loadConfiguration()
     this.status()

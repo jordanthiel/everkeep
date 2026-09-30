@@ -1,3 +1,4 @@
+import { OwnerVerification } from '@renderer/components/OwnerVerification'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Lock } from 'lucide-react'
@@ -50,6 +51,10 @@ export function UnlockPage() {
             <Lock className="h-4 w-4" />
             <h1 className="font-display text-2xl text-charcoal-900">Vault locked</h1>
           </div>
+          {session?.metadata.ownerEmail ? <>
+            <p className="mb-4 text-sm text-warm-500">Sign in as {session.metadata.ownerEmail} to unlock this vault. Internet access is required.</p>
+            <OwnerVerification busy={busy} onContinue={() => void unlock()} />
+          </> : <>
           <p className="text-sm text-warm-500">
             {session?.metadata.name ?? 'This vault'} is password protected. Enter the password to
             continue. Everkeep never sends it anywhere.
@@ -67,11 +72,12 @@ export function UnlockPage() {
               }}
             />
           </div>
+          </>}
           {error && <p className="mt-3 text-sm text-red-800">{error}</p>}
           <div className="mt-6 flex gap-3">
-            <Button className="flex-1" disabled={busy || !password} onClick={() => void unlock()}>
+            {!session?.metadata.ownerEmail && <Button className="flex-1" disabled={busy || !password} onClick={() => void unlock()}>
               {busy ? 'Unlocking…' : 'Unlock'}
-            </Button>
+            </Button>}
             <Button variant="ghost" onClick={() => void closeVault()}>
               Close
             </Button>

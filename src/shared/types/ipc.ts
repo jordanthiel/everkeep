@@ -163,6 +163,7 @@ export interface EverkeepApi {
     close: () => Promise<IpcResult<{ closed: boolean }>>
     lock: () => Promise<IpcResult<VaultSession>>
     unlock: (password: string) => Promise<IpcResult<VaultSession>>
+    onLocked: (listener: (session: VaultSession) => void) => () => void
     getStatus: () => Promise<IpcResult<VaultStatus>>
     getRecent: () => Promise<IpcResult<RecentVault[]>>
     saveAs: (input: SaveAsVaultInput) => Promise<IpcResult<VaultSession>>

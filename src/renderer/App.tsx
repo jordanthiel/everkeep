@@ -86,6 +86,7 @@ function RestoreRoute() {
 }
 
 function SharingSyncRefresh() {
+  useEffect(() => getEverkeepApi().vault.onLocked(session => useVaultStore.getState().setSession(session)), [])
   useEffect(() => {
     let last = ''
     const timer = setInterval(() => { void getEverkeepApi().sharing?.status().then(status => {
