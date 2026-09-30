@@ -1,0 +1,39 @@
+name: Publish complete release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [scripts/publish-complete-release.mjs, .github/workflows/publish-release.yml]
+  workflow_run:
+    workflows: [Release macOS, Release Windows]
+    types: [completed]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require successful installer build
+        if: github.event_name == 'workflow_run'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs" > /tmp/release-jobs.json
+          node --input-type=module - <<'JS'
+          import { readFileSync } from 'node:fs'
+          const jobs = JSON.parse(readFileSync('/tmp/release-jobs.json', 'utf8')).jobs
+          const builds = jobs.flatMap(job => job.steps).filter(step => /^Build.*publish/.test(step.name))
+          if (!builds.length || builds.some(step => step.conclusion !== 'success')) throw new Error('Installer build did not succeed.')
+          JS
+      - name: Publish after all installers and updater files are uploaded
+        run: node scripts/publish-complete-release.mjs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

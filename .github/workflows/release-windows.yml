@@ -37,11 +37,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish release when both platforms are complete
-        run: node scripts/publish-complete-release.mjs
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
