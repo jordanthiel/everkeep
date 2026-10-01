@@ -9,6 +9,7 @@ export type PersonRelationship =
   | 'sibling'
   | 'friend'
   | 'other'
+  | (string & {})
 
 export const PERSON_RELATIONSHIP_OPTIONS: Array<{ value: PersonRelationship; label: string }> = [
   { value: 'self', label: 'Self' },
@@ -41,6 +42,7 @@ export type PersonRole =
   | 'business_partner'
   | 'clergy'
   | 'other'
+  | (string & {})
 
 export const PERSON_ROLE_OPTIONS: Array<{ value: PersonRole; label: string }> = [
   { value: 'executor', label: 'Executor' },

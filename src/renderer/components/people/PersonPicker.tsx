@@ -1,3 +1,5 @@
+import { CustomRole } from '@renderer/components/people/CustomRole'
+import { CustomSelect } from '@renderer/components/ui/CustomSelect'
 import { useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Plus, X } from 'lucide-react'
@@ -224,20 +226,7 @@ export function PersonPicker({
               </div>
               <div>
                 <Label htmlFor={`${id ?? 'person'}-new-relationship`}>Relationship</Label>
-                <select
-                  id={`${id ?? 'person'}-new-relationship`}
-                  value={draftRelationship}
-                  onChange={(e) =>
-                    setDraftRelationship(e.target.value as PersonRelationship)
-                  }
-                  className="flex h-10 w-full rounded-md border border-warm-300 bg-ivory-50 px-3 text-sm"
-                >
-                  {PERSON_RELATIONSHIP_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect id={`${id ?? 'person'}-new-relationship`} value={draftRelationship} options={PERSON_RELATIONSHIP_OPTIONS} onChange={setDraftRelationship} />
               </div>
               <div>
                 <Label htmlFor={`${id ?? 'person'}-new-phone`}>Phone (optional)</Label>
@@ -274,6 +263,7 @@ export function PersonPicker({
                     )
                   })}
                 </div>
+          <CustomRole roles={draftRoles} onChange={setDraftRoles} />
               </div>
               {error && <p className="text-sm text-red-800">{error}</p>}
               <div className="flex justify-end gap-2">

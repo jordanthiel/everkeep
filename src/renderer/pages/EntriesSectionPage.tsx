@@ -1,3 +1,4 @@
+import { CustomSelect } from '@renderer/components/ui/CustomSelect'
 import { useJourneyStore } from '@renderer/state/journeyStore'
 import { RecordLoginFields } from '@renderer/components/records/RecordLoginFields'
 import type { RecordLoginInput } from '@shared/types/recordLogin'
@@ -11,7 +12,7 @@ import {
   type Dispatch,
   type SetStateAction
 } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Eye, EyeOff, FileUp, Save, X } from 'lucide-react'
 import { RecordPage } from '@renderer/components/records/RecordPage'
 import { useRecordEditor } from '@renderer/hooks/useRecordEditor'
@@ -54,6 +55,8 @@ function emptyForm(sectionId: VaultSectionId) {
 }
 
 export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId }) {
+  const navigate = useNavigate()
+  const [returnTo, setReturnTo] = useState<string | null>(null)
   const def = useMemo(() => getSectionDefinition(sectionId), [sectionId])
   const queryClient = useQueryClient()
   const protectedVault = useVaultStore(s => s.session?.metadata.isPasswordProtected)
@@ -117,6 +120,7 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
   )
 
   useEffect(() => {
+    if (searchParams.get('returnTo') === 'people') setReturnTo('/people')
     const personId = searchParams.get('personId')
     const kind = searchParams.get('kind')
     const editId = searchParams.get('edit')
@@ -223,6 +227,7 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
       resetForm()
       setSaveStatus('saved')
       editor.saved(saved.id)
+      if (returnTo) navigate(returnTo)
       window.setTimeout(() => setSaveStatus('idle'), 1500)
     },
     onError: (err) => {
@@ -304,7 +309,7 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
       count={entriesQuery.data?.length ?? 0} loading={entriesQuery.isPending} failed={entriesQuery.isError} retry={() => void entriesQuery.refetch()}
       editor={editor} saving={saveMutation.isPending}
       onAdd={() => { resetForm(); openEditor(emptyForm(sectionId)) }}
-      onCancel={() => { resetForm(); editor.close() }}
+      onCancel={() => { resetForm(); editor.close(); if (returnTo) navigate(returnTo) }}
       saveAction={<div className="md:col-span-2">
           <Button disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
             <Save className="h-4 w-4" />
@@ -335,22 +340,10 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
 
         </div>
 
-        {sectionId === 'dependents' && <fieldset className="md:col-span-2"><legend className="mb-3 text-sm font-medium">{content.kindLabel}</legend><div className="grid gap-3 sm:grid-cols-3">{def.kinds?.map(kind => <label key={kind.value} className={`flex cursor-pointer items-center gap-3 rounded-lg border p-4 text-sm ${form.kind === kind.value ? 'border-forest-600 bg-forest-700/5' : 'border-warm-200 bg-white'}`}><input type="radio" name="care-profile-kind" value={kind.value} checked={form.kind === kind.value} onChange={() => setForm(current => ({...current, kind: kind.value}))} />{kind.label}</label>)}</div></fieldset>}
-        {def.kinds && sectionId !== 'dependents' && (
+        {def.kinds && (
           <div className={def.hideTitle ? 'md:col-span-2' : undefined}>
             <Label htmlFor={`${sectionId}-kind`}>{content.kindLabel}</Label>
-            <select
-              id={`${sectionId}-kind`}
-              value={form.kind}
-              onChange={(e) => setForm((current) => ({ ...current, kind: e.target.value }))}
-              className="flex h-10 w-full rounded-md border border-warm-300 bg-ivory-50 px-3 text-sm"
-            >
-              {def.kinds.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <CustomSelect id={`${sectionId}-kind`} value={form.kind} options={def.kinds} onChange={kind => setForm(current => ({ ...current, kind }))} />
           </div>
         )}
         {!def.hideTitle && (
@@ -397,18 +390,7 @@ export function EntriesSectionPage({ sectionId }: { sectionId: VaultSectionId })
                   className="w-full rounded-md border border-warm-300 bg-ivory-50 px-3 py-2 text-sm"
                 />
               ) : field.type === 'select' ? (
-                <select
-                  id={id}
-                  value={value}
-                  onChange={(e) => setField(field.key, e.target.value, field.sensitive)}
-                  className="flex h-10 w-full rounded-md border border-warm-300 bg-ivory-50 px-3 text-sm"
-                >
-                  {(field.options ?? []).map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect id={id} value={value} options={field.options ?? []} onChange={next => setField(field.key, next, field.sensitive)} />
               ) : (
                 <Input
                   id={id}

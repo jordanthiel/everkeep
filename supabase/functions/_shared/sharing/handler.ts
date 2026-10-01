@@ -1,5 +1,6 @@
 import { accountCheckout, accountEntitlement, stripeWebhook, BillingError } from './billing.ts'
 import { z } from 'zod'
+import { invitationHtml } from './invitation-email.ts'
 import { GrantSchema, InvitationSchema, SharedSnapshotSchema, invitationText, visibleRecords, recordContent, type SharedSnapshot, type ShareScope } from './schema.ts'
 
 import { AuthError } from './ports.ts'
@@ -77,11 +78,11 @@ async function audit(env: SharingEnv, vaultId: string, actor: string, action: st
 }
 const allowed = (scope: ShareScope, id: string) => scope.type === 'all' || scope.recordIds.includes(id)
 function requireOwner(role: string) { if (role !== 'owner') throw new HttpError(403, 'Only the owner can manage sharing.') }
-export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to: string, subject: string, text: string, key: string) => Promise<void> } = {}) {
-  async function mail(to: string, subject: string, text: string, key: string) {
-    if (dependencies.mail) return dependencies.mail(to, subject, text, key)
+export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to: string, subject: string, text: string, key: string, html?: string) => Promise<void> } = {}) {
+  async function mail(to: string, subject: string, text: string, key: string, html?: string) {
+    if (dependencies.mail) return dependencies.mail(to, subject, text, key, html)
     if (!env.RESEND_API_KEY || !env.FROM_EMAIL) throw new HttpError(503, 'Email delivery is not configured.')
-    const response = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify({ from: env.FROM_EMAIL, to: [to], subject, text }) })
+    const response = await fetch('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify({ from: env.FROM_EMAIL, to: [to], subject, text, html }) })
     if (!response.ok) throw new HttpError(502, 'Email could not be sent. Please retry.')
   }
   const handle = async (request: Request): Promise<Response> => {
@@ -251,7 +252,7 @@ export function createSharingHandler(env: SharingEnv, dependencies: { mail?: (to
           const owner = user.email
           const tokenHash = await env.AUTH.createEmailLink(input.email)
           const invitationUrl = `${env.PUBLIC_URL.replace(/\/$/, '')}/#vault/${id}?token_hash=${encodeURIComponent(tokenHash)}`
-          await mail(input.email, `${owner} shared ${vault.name} with you`, invitationText(vault.name, owner, invitationUrl, input, vault.payload ? 'hosted' : 'file') + '\n\nThis personal sign-in link expires and can be used once. Do not forward it. If it expires, use email sign-in on the portal.', `${input.requestId}:${await digest(tokenHash)}`)
+          await mail(input.email, `${owner} shared ${vault.name} with you`, invitationText(vault.name, owner, invitationUrl, input, vault.payload ? 'hosted' : 'file') + '\n\nThis personal sign-in link expires and can be used once. Do not forward it. If it expires, use email sign-in on the portal.', `${input.requestId}:${await digest(tokenHash)}`, invitationHtml(vault.name, owner, invitationUrl, input, vault.payload ? 'hosted' : 'file'))
           await env.DB.batch([env.DB.prepare("UPDATE invitations SET status='sent' WHERE request_id=?").bind(input.requestId), env.DB.prepare("UPDATE memberships SET email_status='sent' WHERE vault_id=? AND email=?").bind(id, input.email)])
         } catch (error) { await env.DB.prepare("UPDATE memberships SET email_status='failed' WHERE vault_id=? AND email=?").bind(id, input.email).run(); throw error }
         await audit(env, id, user.email, `invited ${input.email}`)

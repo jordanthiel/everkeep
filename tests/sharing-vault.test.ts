@@ -38,7 +38,7 @@ describe('local shared vault persistence', () => {
     const data = service.getSharingSnapshot(); data.records.find(record => record.id === person.id)!.fields.phone.value = '555-1212'; data.records.find(record => record.id === account.id)!.fields.notes.value = 'New bank note'
     service.applySharingSnapshot(data)
     expect(service.listPeople()[0]).toMatchObject({ phone: '555-1212', roles: ['executor'] }); expect(service.listAccounts()[0]).toMatchObject({ notes: 'New bank note', fullAccountNumber: '123456789', ownerPersonIds: [person.id] })
-    const invalid = service.getSharingSnapshot(); invalid.records.find(record => record.id === person.id)!.fields.phone.value = 'Should roll back'; invalid.records.find(record => record.id === account.id)!.fields.accountType.value = 'bad-type'
+    const invalid = service.getSharingSnapshot(); invalid.records.find(record => record.id === person.id)!.fields.phone.value = 'Should roll back'; invalid.records.find(record => record.id === account.id)!.fields.accountType.value = ' '
     expect(() => service.applySharingSnapshot(invalid)).toThrow(); expect(service.listPeople()[0].phone).toBe('555-1212')
   })
   it('restores a locally archived record when the owner explicitly keeps the shared version', () => {

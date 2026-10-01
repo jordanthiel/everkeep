@@ -607,7 +607,7 @@ export function getSectionDefinition(id: VaultSectionId): SectionDefinition {
 }
 
 export function getVisibleFields(def: SectionDefinition, kind: string): SectionFieldDef[] {
-  return def.fields.filter((field) => !field.forKinds || field.forKinds.includes(kind))
+  return def.fields.filter((field) => !field.forKinds || field.forKinds.includes(def.kinds?.some(option => option.value === kind) ? kind : 'other'))
 }
 
 export function kindLabelFor(def: SectionDefinition, kind: string | null | undefined): string {

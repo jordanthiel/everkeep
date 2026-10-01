@@ -18,6 +18,7 @@ export type AccountType =
   | 'treasury'
   | 'crypto'
   | 'other'
+  | (string & {})
 
 export type BeneficiaryDesignationType = 'primary' | 'contingent'
 

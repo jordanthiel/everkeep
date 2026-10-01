@@ -1,3 +1,4 @@
+import { CustomSelect } from '@renderer/components/ui/CustomSelect'
 import { useJourneyStore } from '@renderer/state/journeyStore'
 import { RecordLoginFields } from '@renderer/components/records/RecordLoginFields'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -185,20 +186,7 @@ export function FinancialPage() {
         </div>
         <div>
           <Label htmlFor="accountType">Account type</Label>
-          <select
-            id="accountType"
-            value={form.accountType}
-            onChange={(e) =>
-              setForm((current) => ({ ...current, accountType: e.target.value as AccountType }))
-            }
-            className="flex h-10 w-full rounded-md border border-warm-300 bg-ivory-50 px-3 text-sm"
-          >
-            {ACCOUNT_TYPES.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.label}
-              </option>
-            ))}
-          </select>
+          <CustomSelect id="accountType" value={form.accountType} options={ACCOUNT_TYPES} onChange={accountType => setForm(current => ({ ...current, accountType }))} />
         </div>
         <div>
           <Label htmlFor="lastFour">Last four digits</Label>

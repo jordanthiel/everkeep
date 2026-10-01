@@ -35,7 +35,7 @@ export const PersonRoleSchema = z.enum([
 
 export const CreatePersonSchema = z.object({
   fullName: z.string().min(1).max(200),
-  relationship: PersonRelationshipSchema.nullable().optional(),
+  relationship: PersonRelationshipSchema.or(z.string().trim().min(1).max(100)).nullable().optional(),
   dateOfBirth: z.string().max(32).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
   email: z.string().max(200).nullable().optional(),
@@ -43,13 +43,13 @@ export const CreatePersonSchema = z.object({
   company: z.string().max(200).nullable().optional(),
   website: z.string().max(300).nullable().optional(),
   notes: z.string().max(10000).nullable().optional(),
-  roles: z.array(PersonRoleSchema).optional()
+  roles: z.array(PersonRoleSchema.or(z.string().trim().min(1).max(100))).optional()
 })
 
 export const UpdatePersonSchema = z.object({
   id: z.string().uuid(),
   fullName: z.string().min(1).max(200).optional(),
-  relationship: PersonRelationshipSchema.nullable().optional(),
+  relationship: PersonRelationshipSchema.or(z.string().trim().min(1).max(100)).nullable().optional(),
   dateOfBirth: z.string().max(32).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
   email: z.string().max(200).nullable().optional(),
@@ -57,7 +57,7 @@ export const UpdatePersonSchema = z.object({
   company: z.string().max(200).nullable().optional(),
   website: z.string().max(300).nullable().optional(),
   notes: z.string().max(10000).nullable().optional(),
-  roles: z.array(PersonRoleSchema).optional(),
+  roles: z.array(PersonRoleSchema.or(z.string().trim().min(1).max(100))).optional(),
   lastReviewedAt: z.string().nullable().optional()
 })
 

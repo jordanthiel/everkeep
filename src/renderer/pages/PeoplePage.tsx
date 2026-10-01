@@ -1,3 +1,5 @@
+import { CustomRole } from '@renderer/components/people/CustomRole'
+import { CustomSelect } from '@renderer/components/ui/CustomSelect'
 import { useJourneyStore } from '@renderer/state/journeyStore'
 import { TOPIC_CONTENT } from '@shared/sections/topicContent'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -184,23 +186,7 @@ export function PeoplePage() {
           </div>
           <div>
             <Label htmlFor="relationship">Relationship</Label>
-            <select
-              id="relationship"
-              value={form.relationship}
-              onChange={(e) =>
-                setForm((current) => ({
-                  ...current,
-                  relationship: e.target.value as PersonRelationship
-                }))
-              }
-              className="flex h-10 w-full rounded-md border border-warm-300 bg-ivory-50 px-3 text-sm"
-            >
-              {PERSON_RELATIONSHIP_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <CustomSelect id="relationship" value={form.relationship} options={PERSON_RELATIONSHIP_OPTIONS} onChange={relationship => setForm(current => ({ ...current, relationship }))} />
           </div>
           <div>
             <Label htmlFor="personDob">Date of birth (optional)</Label>
@@ -261,6 +247,7 @@ export function PeoplePage() {
               )
             })}
           </div>
+          <CustomRole roles={form.roles} onChange={roles => setForm(current => ({ ...current, roles }))} />
         </div>
 
       </div>
@@ -286,7 +273,7 @@ export function PeoplePage() {
                   <p className="mt-1 text-sm text-warm-500">
                     {[
                       PERSON_RELATIONSHIP_OPTIONS.find((item) => item.value === person.relationship)
-                        ?.label,
+                        ?.label ?? person.relationship,
                       person.company
                     ]
                       .filter(Boolean)
@@ -323,7 +310,7 @@ export function PeoplePage() {
                               type="button"
                               className="text-left text-forest-700 underline-offset-2 hover:underline"
                               onClick={() =>
-                                navigate(`/identity?edit=${entry.id}`)
+                                navigate(`/identity?edit=${entry.id}&returnTo=people`)
                               }
                             >
                               {kindLabelFor(identityDef, entry.kind) || entry.title}
@@ -342,7 +329,7 @@ export function PeoplePage() {
                           size="sm"
                           variant="secondary"
                           onClick={() =>
-                            navigate(`/identity?personId=${person.id}&kind=${item.kind}`)
+                            navigate(`/identity?personId=${person.id}&kind=${item.kind}&returnTo=people`)
                           }
                         >
                           Add {item.label}
